@@ -1078,12 +1078,13 @@ private fun FullScreenVideoOverlay(
     val youtubeVideoId = remember(videoUrl) { extractYoutubeVideoId(videoUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var exoPlayerInstance by remember { mutableStateOf<ExoPlayer?>(null) }
-    var feedbackText by remember { mutableStateOf<String?>(null) }
+    var feedbackAction by remember { mutableStateOf<String?>(null) }
+    var feedbackTrigger by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(feedbackText) {
-        if (feedbackText != null) {
-            kotlinx.coroutines.delay(850)
-            feedbackText = null
+    LaunchedEffect(feedbackTrigger) {
+        if (feedbackTrigger > 0L) {
+            kotlinx.coroutines.delay(650)
+            feedbackAction = null
         }
     }
 
@@ -1104,7 +1105,8 @@ private fun FullScreenVideoOverlay(
                             } else {
                                 exoPlayerInstance?.let { p -> p.seekTo(p.currentPosition + 10_000L) }
                             }
-                            feedbackText = "Adelantar +10s ⏩"
+                            feedbackAction = "Adelantar +10s ⏩"
+                            feedbackTrigger++
                             true
                         }
                         Key.DirectionLeft -> {
@@ -1113,7 +1115,8 @@ private fun FullScreenVideoOverlay(
                             } else {
                                 exoPlayerInstance?.let { p -> p.seekTo(maxOf(0L, p.currentPosition - 10_000L)) }
                             }
-                            feedbackText = "Retroceder -10s ⏪"
+                            feedbackAction = "Retroceder -10s ⏪"
+                            feedbackTrigger++
                             true
                         }
                         else -> false
@@ -1124,7 +1127,6 @@ private fun FullScreenVideoOverlay(
             }
     ) {
         if (youtubeVideoId != null) {
-            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             val htmlContent = """
                 <!DOCTYPE html>
                 <html>
@@ -1132,21 +1134,15 @@ private fun FullScreenVideoOverlay(
                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
-                        html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
-                        #ytIframe { width: 100%; height: 100%; border: none; }
-                        /* Bloqueo estricto de banners publicitarios y branding exterior */
+                        html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+                        #player { width: 100%; height: 100%; border: none; }
                         .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
                         .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
                         .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
                     </style>
                 </head>
                 <body>
-                    <iframe id="ytIframe"
-                        src="https://www.youtube-nocookie.com/embed/$youtubeVideoId?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&fs=0&playsinline=1&origin=https://elboom.cl" 
-                        title="Video Turístico" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen>
-                    </iframe>
+                    <div id="player"></div>
                     <script>
                         var tag = document.createElement('script');
                         tag.src = "https://www.youtube.com/iframe_api";
@@ -1155,42 +1151,40 @@ private fun FullScreenVideoOverlay(
 
                         var player;
                         function onYouTubeIframeAPIReady() {
-                            player = new YT.Player('ytIframe', {
+                            player = new YT.Player('player', {
+                                height: '100%',
+                                width: '100%',
+                                videoId: '$youtubeVideoId',
+                                playerVars: {
+                                    'autoplay': 1,
+                                    'mute': 0,
+                                    'controls': 0,
+                                    'rel': 0,
+                                    'modestbranding': 1,
+                                    'iv_load_policy': 3,
+                                    'fs': 0,
+                                    'playsinline': 1,
+                                    'origin': 'https://elboom.cl'
+                                },
                                 events: {
-                                    'onReady': function(e) { e.target.playVideo(); }
+                                    'onReady': function(e) {
+                                        try {
+                                            e.target.unMute();
+                                            e.target.setVolume(100);
+                                            e.target.playVideo();
+                                        } catch(err) {}
+                                    }
                                 }
                             });
                         }
                         function seekRelative(sec) {
-                            if (player && typeof player.getCurrentTime === 'function') {
-                                var c = player.getCurrentTime();
-                                player.seekTo(Math.max(0, c + sec), true);
-                            } else {
-                                var ifr = document.getElementById('ytIframe');
-                                if (ifr && ifr.contentWindow) {
-                                    ifr.contentWindow.postMessage(JSON.stringify({
-                                        event: 'command',
-                                        func: 'seekTo',
-                                        args: [sec > 0 ? 10 : 0, true]
-                                    }), '*');
-                                }
-                            }
-                        }
-                        function togglePlayPause() {
-                            if (player && typeof player.getPlayerState === 'function') {
-                                if (player.getPlayerState() === 1) player.pauseVideo();
-                                else player.playVideo();
-                            }
-                        }
-                        // Saltar anuncios automáticamente en milisegundos si YouTube intenta mostrar alguno
-                        setInterval(function() {
                             try {
-                                var btn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-text');
-                                if (btn) btn.click();
-                                var vid = document.querySelector('.ad-showing video');
-                                if (vid && vid.duration) vid.currentTime = vid.duration;
-                            } catch(e) {}
-                        }, 200);
+                                if (player && typeof player.getCurrentTime === 'function') {
+                                    var curr = player.getCurrentTime();
+                                    player.seekTo(Math.max(0, curr + sec), true);
+                                }
+                            } catch(err) {}
+                        }
                     </script>
                 </body>
                 </html>
@@ -1238,7 +1232,6 @@ private fun FullScreenVideoOverlay(
                             displayZoomControls = false
                             allowFileAccess = false
                             allowContentAccess = false
-                            userAgentString = desktopUserAgent
                         }
                         setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
@@ -1295,34 +1288,36 @@ private fun FullScreenVideoOverlay(
             )
         }
 
-        // Indicador visual flotante de adelantar / retroceder (+10s / -10s)
+        // Indicador minimalista de avance/retroceso (discreto en el tercio inferior, nunca tapa el centro)
         AnimatedVisibility(
-            visible = feedbackText != null,
-            enter = fadeIn(tween(80)) + scaleIn(initialScale = 0.85f),
-            exit = fadeOut(tween(200)),
-            modifier = Modifier.align(Alignment.Center)
+            visible = feedbackAction != null,
+            enter = fadeIn(tween(60)) + scaleIn(initialScale = 0.90f),
+            exit = fadeOut(tween(180)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.82f))
-                    .border(1.2.dp, Color(0xFF00E5FF), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 18.dp, vertical = 7.dp)
             ) {
                 Text(
-                    text = feedbackText ?: "",
+                    text = feedbackAction ?: "",
                     color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
 
-        // Barra superior translúcida con ÚNICO botón de retorno al destino
+        // Barra superior con botón minimalista "← Volver" (vidrio translúcido elegante, sin tapar el video)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 36.dp, vertical = 20.dp),
+                .padding(horizontal = 28.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1331,17 +1326,17 @@ private fun FullScreenVideoOverlay(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
                     .focusRequester(returnFocusRequester)
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (returnFocused) Color(0xFF00E5FF)
-                        else Color.Black.copy(alpha = 0.65f)
+                        if (returnFocused) Color.White.copy(alpha = 0.22f)
+                        else Color.Black.copy(alpha = 0.45f)
                     )
                     .border(
-                        width = if (returnFocused) 2.dp else 1.dp,
-                        color = if (returnFocused) Color.White else Color.White.copy(alpha = 0.35f),
+                        width = if (returnFocused) 1.5.dp else 1.dp,
+                        color = if (returnFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
                         shape = RoundedCornerShape(50)
                     )
                     .clickable(
@@ -1351,13 +1346,13 @@ private fun FullScreenVideoOverlay(
                         onClose()
                     }
                     .focusable(interactionSource = returnInteraction)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "← Volver a $title",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (returnFocused) Color.Black else Color.White
+                    text = "← Volver",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
                 )
             }
         }
