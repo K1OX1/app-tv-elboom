@@ -104,23 +104,12 @@ fun AppleTvAppCard(
     )
 
     val elevation by animateFloatAsState(
-        targetValue = if (isFocused) 22f else 2f,
+        targetValue = if (isFocused) 16f else 2f,
         animationSpec = spring(
             dampingRatio = 0.8f,
             stiffness = 380f
         ),
         label = "appletv_elevation"
-    )
-
-    val tiltX by animateFloatAsState(
-        targetValue = if (isFocused) -2f else 0f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 340f),
-        label = "app_tilt_x"
-    )
-    val tiltY by animateFloatAsState(
-        targetValue = if (isFocused) 1.5f else 0f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 340f),
-        label = "app_tilt_y"
     )
 
     val shape = remember { RoundedCornerShape(18.dp) }
@@ -132,9 +121,6 @@ fun AppleTvAppCard(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-                rotationX = tiltX
-                rotationY = tiltY
-                cameraDistance = 14f * density
                 clip = false
             }
             .focusable(interactionSource = interactionSource)

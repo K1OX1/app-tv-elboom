@@ -174,64 +174,23 @@ fun HomeScreen(
         }
     }
 
-    // Animaciones ambientales cinemáticas estilo Apple TV tvOS (Ken Burns continuo y respiración de luz)
-    val ambientTransition = rememberInfiniteTransition(label = "ambient_ken_burns")
-    val ambientScale by ambientTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.035f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(26000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ambient_scale"
-    )
-    val ambientGlowAlpha by ambientTransition.animateFloat(
-        initialValue = 0.16f,
-        targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(6500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ambient_glow_alpha"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(TvTokens.BgDeepDark)
     ) {
-        // 1. EL FONDO AMBIENTAL APPLE TV (Ken Burns suave + Viñeta Obsidian y Resplandor Midnight Navy)
+        // Fondo sobrio estilo Apple TV: Negro obsidiana profundo con sutil gradiente radial estático (0% carga GPU)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = ambientScale
-                    scaleY = ambientScale
-                }
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF0F1E3D),
-                            Color(0xFF081224),
-                            Color(0xFF030713)
+                            Color(0xFF070E1C),
+                            Color(0xFF030710),
+                            Color(0xFF01040A)
                         ),
-                        radius = 1400f
-                    )
-                )
-        )
-
-        // 2. Halo de luz ambiental sutil en la esquina superior izquierda
-        Box(
-            modifier = Modifier
-                .size(750.dp)
-                .align(Alignment.TopStart)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF00E5FF).copy(alpha = ambientGlowAlpha * 0.18f),
-                            Color(0xFF1E3A8A).copy(alpha = ambientGlowAlpha * 0.12f),
-                            Color.Transparent
-                        )
+                        radius = 1200f
                     )
                 )
         )

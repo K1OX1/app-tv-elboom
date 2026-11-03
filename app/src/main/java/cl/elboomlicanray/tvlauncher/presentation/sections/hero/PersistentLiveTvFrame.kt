@@ -68,23 +68,12 @@ fun PersistentLiveTvFrame(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.045f else 1.0f,
+        targetValue = if (isFocused) 1.035f else 1.0f,
         animationSpec = spring(
-            dampingRatio = 0.74f,
-            stiffness = 360f
+            dampingRatio = 0.8f,
+            stiffness = 380f
         ),
         label = "tv_scale"
-    )
-
-    val livePulseTransition = rememberInfiniteTransition(label = "live_pulse")
-    val liveDotAlpha by livePulseTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "live_dot_alpha"
     )
 
     val tvChannels = remember {
@@ -337,7 +326,7 @@ fun PersistentLiveTvFrame(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = liveDotAlpha))
+                                .background(Color.White)
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(

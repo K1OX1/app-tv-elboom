@@ -53,58 +53,27 @@ fun PrimaryShortcutCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    // 1. Escala con física elástica de Apple TV (Spring Physics)
+    // 1. Escala elástica sobria Apple TV (1.055x) solo al interactuar
     val cardScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.085f else 1.0f,
+        targetValue = if (isFocused) 1.055f else 1.0f,
         animationSpec = spring(
-            dampingRatio = 0.72f,
-            stiffness = 340f
+            dampingRatio = 0.78f,
+            stiffness = 380f
         ),
         label = "card_scale"
     )
 
-    // 2. Elevación y sombra flotante 3D
+    // 2. Elevación y sombra difusa
     val cardElevation by animateFloatAsState(
-        targetValue = if (isFocused) 24f else 2f,
+        targetValue = if (isFocused) 16f else 2f,
         animationSpec = spring(
             dampingRatio = 0.8f,
-            stiffness = 340f
+            stiffness = 380f
         ),
         label = "card_elevation"
     )
 
-    // 3. Inclinación 3D (Tilt Parallax)
-    val tiltRotationX by animateFloatAsState(
-        targetValue = if (isFocused) -1.8f else 0f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 320f),
-        label = "tilt_x"
-    )
-    val tiltRotationY by animateFloatAsState(
-        targetValue = if (isFocused) 1.2f else 0f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 320f),
-        label = "tilt_y"
-    )
-
-    // 4. Escala dinámica del icono interior
-    val iconScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.12f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = 380f),
-        label = "icon_scale"
-    )
-
-    // 5. Animación de brillo especular continuo en foco (Shimmer diagonal sutil)
-    val infiniteTransition = rememberInfiniteTransition(label = "card_sheen")
-    val sheenProgress by infiniteTransition.animateFloat(
-        initialValue = -0.8f,
-        targetValue = 1.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "sheen_anim"
-    )
-
-    val cardShape = remember { RoundedCornerShape(20.dp) }
+    val cardShape = remember { RoundedCornerShape(18.dp) }
 
     Card(
         onClick = onClick,
@@ -115,53 +84,31 @@ fun PrimaryShortcutCard(
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
-                rotationX = tiltRotationX
-                rotationY = tiltRotationY
-                cameraDistance = 14f * density
                 clip = false
             }
-            .then(
-                if (isFocused) {
-                    Modifier.drawBehind {
-                        // Halo de luz difusa 360° detrás de la tarjeta
-                        drawRoundRect(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    TvTokens.CyanNeon.copy(alpha = 0.40f),
-                                    TvTokens.CyanNeon.copy(alpha = 0.14f),
-                                    Color.Transparent
-                                ),
-                                center = center,
-                                radius = size.maxDimension * 0.90f
-                            ),
-                            cornerRadius = CornerRadius(22.dp.toPx(), 22.dp.toPx())
-                        )
-                    }
-                } else Modifier
-            )
             .shadow(
                 elevation = cardElevation.dp,
                 shape = cardShape,
-                spotColor = if (isFocused) TvTokens.CyanNeon.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.6f)
+                spotColor = if (isFocused) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.5f)
             )
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
         shape = CardDefaults.shape(cardShape),
         scale = CardDefaults.scale(
             scale = 1.0f,
             focusedScale = 1.0f,
-            pressedScale = 0.96f
+            pressedScale = 0.97f
         ),
         colors = CardDefaults.colors(
-            containerColor = Color(0xCC091428),
-            focusedContainerColor = Color(0xFA0B1A35)
+            containerColor = Color(0xCC0B1424),
+            focusedContainerColor = Color(0xF0101F38)
         ),
         border = CardDefaults.border(
             border = Border(
-                border = BorderStroke(1.dp, Color(0x28FFFFFF)),
+                border = BorderStroke(1.dp, Color(0x22FFFFFF)),
                 shape = cardShape
             ),
             focusedBorder = Border(
-                border = BorderStroke(2.2.dp, TvTokens.CyanNeon),
+                border = BorderStroke(2.dp, Color.White),
                 shape = cardShape
             )
         )
@@ -171,7 +118,7 @@ fun PrimaryShortcutCard(
                 .fillMaxSize()
                 .clip(cardShape)
         ) {
-            // Fondo con degradado reactivo
+            // Fondo con acabado de cristal Apple TV
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -179,15 +126,15 @@ fun PrimaryShortcutCard(
                         if (isFocused) {
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color(0x4D00E5FF),
-                                    Color(0x1A00E5FF),
-                                    Color(0x0500E5FF)
+                                    Color(0x33FFFFFF),
+                                    Color(0x0A00E5FF),
+                                    Color.Transparent
                                 )
                             )
                         } else {
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color(0x1FFFFFFF),
+                                    Color(0x14FFFFFF),
                                     Color.Transparent
                                 )
                             )
@@ -195,49 +142,23 @@ fun PrimaryShortcutCard(
                     )
             )
 
-            // Bisel especular superior tipo cristal Apple TV
+            // Bisel especular superior de cristal puro
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(36.dp)
                     .align(Alignment.TopCenter)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = if (isFocused) 0.30f else 0.12f),
-                                Color.White.copy(alpha = if (isFocused) 0.08f else 0.02f),
+                                Color.White.copy(alpha = if (isFocused) 0.25f else 0.08f),
                                 Color.Transparent
                             )
                         )
                     )
             )
 
-            // Reflejo diagonal de luz (Sheen sweep) cuando tiene foco
-            if (isFocused) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .drawBehind {
-                            val startX = size.width * (sheenProgress - 0.4f)
-                            val endX = size.width * (sheenProgress + 0.4f)
-                            drawRect(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.White.copy(alpha = 0.14f),
-                                        Color.White.copy(alpha = 0.22f),
-                                        Color.White.copy(alpha = 0.14f),
-                                        Color.Transparent
-                                    ),
-                                    start = Offset(startX, 0f),
-                                    end = Offset(endX, size.height)
-                                )
-                            )
-                        }
-                )
-            }
-
-            // Contenido interior
+            // Contenido interior sobrio y legible
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -245,39 +166,30 @@ fun PrimaryShortcutCard(
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.Start
             ) {
-                // Icono vectorial con salto elástico
-                Box(
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    }
-                ) {
-                    TvIcon(
-                        name = item.iconKey,
-                        size = 32.dp,
-                        color = if (isFocused) TvTokens.CyanNeon else Color.White,
-                        strokeWidth = if (isFocused) 2.6f else 2.2f
-                    )
-                }
+                TvIcon(
+                    name = item.iconKey,
+                    size = 30.dp,
+                    color = if (isFocused) Color(0xFF00E5FF) else Color.White,
+                    strokeWidth = if (isFocused) 2.4f else 2.0f
+                )
 
-                // Textos con tipografía Apple TV nítida
                 Column {
                     Text(
                         text = item.title,
                         color = Color.White,
-                        fontSize = 14.5.sp,
-                        fontWeight = if (isFocused) FontWeight.ExtraBold else FontWeight.Bold,
+                        fontSize = 14.sp,
+                        fontWeight = if (isFocused) FontWeight.ExtraBold else FontWeight.SemiBold,
                         softWrap = true,
-                        lineHeight = 17.sp
+                        lineHeight = 16.5.sp
                     )
-                    Spacer(modifier = Modifier.height(2.5.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = item.subtitle,
-                        color = if (isFocused) Color(0xFFF1F5F9) else TvTokens.TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
+                        color = if (isFocused) Color(0xFFE2E8F0) else TvTokens.TextMuted,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Normal,
                         softWrap = true,
-                        lineHeight = 13.5.sp
+                        lineHeight = 13.sp
                     )
                 }
             }

@@ -90,30 +90,18 @@ fun WelcomeHeroPanel(
         strings.noPendingBalance
     }
 
-    val badgeTransition = rememberInfiniteTransition(label = "badge_pulse")
-    val badgeGlowAlpha by badgeTransition.animateFloat(
-        initialValue = 0.20f,
-        targetValue = 0.45f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "badge_alpha"
-    )
-
-    val heroShape = remember { RoundedCornerShape(22.dp) }
+    val heroShape = remember { RoundedCornerShape(20.dp) }
 
     Box(
         modifier = modifier
             .clip(heroShape)
             .background(TvTokens.CardBackgroundRest)
             .border(
-                1.5.dp,
+                1.2.dp,
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.35f),
-                        Color.White.copy(alpha = 0.12f),
-                        Color.White.copy(alpha = 0.05f)
+                        Color.White.copy(alpha = 0.28f),
+                        Color.White.copy(alpha = 0.08f)
                     )
                 ),
                 heroShape
@@ -217,21 +205,17 @@ fun WelcomeHeroPanel(
                 }
             }
 
-            // ESTADO DE RESERVA CON PULSO AMBIENTAL APPLE TV
+            // ESTADO DE RESERVA ESTILO VIDRIO ESMERILADO
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (guestStay.isOccupied) {
-                            Color(0xFF10B981).copy(alpha = badgeGlowAlpha)
-                        } else {
-                            Color(0xFF38BDF8).copy(alpha = badgeGlowAlpha)
-                        }
+                        if (guestStay.isOccupied) Color(0x3310B981) else Color(0x3338BDF8)
                     )
                     .border(
-                        1.2.dp,
-                        if (guestStay.isOccupied) Color(0xFF34D399).copy(alpha = 0.85f) else Color(0xFF38BDF8).copy(alpha = 0.85f),
+                        1.dp,
+                        if (guestStay.isOccupied) Color(0xFF34D399).copy(alpha = 0.8f) else Color(0xFF38BDF8).copy(alpha = 0.8f),
                         RoundedCornerShape(50)
                     )
                     .padding(horizontal = 11.dp, vertical = 4.dp)
