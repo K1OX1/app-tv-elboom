@@ -227,14 +227,28 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-            // ITEM 1: ALERTA DE SALIDA (CHECKOUT DAY)
+            // ITEM 1: ALERTA DE SALIDA (CHECKOUT DAY - Solo visible desde las 08:30 hasta las 11:00 AM)
             if (uiState.guestStay.isCheckoutDay) {
-                item {
-                    CheckoutAlertBanner(
-                        alert = uiState.guestStay.checkoutAlert ?: "DÍA DE SALIDA: Entrega de cabaña antes de las 11:00 hrs.",
-                        balance = uiState.guestStay.balanceMessage,
-                        isPaid = uiState.guestStay.isPaid
-                    )
+                val cal = java.util.Calendar.getInstance()
+                val currentHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                val currentMin = cal.get(java.util.Calendar.MINUTE)
+                val isMorningCheckoutWindow = (currentHour == 8 && currentMin >= 30) || (currentHour in 9..10)
+
+                if (isMorningCheckoutWindow) {
+                    val alertText = if (currentHour == 10) {
+                        val remainingMin = 60 - currentMin
+                        "⏳ Quedan $remainingMin minutos para el check-out (11:00 hrs) · ¡Muchas gracias por tu visita!"
+                    } else {
+                        uiState.guestStay.checkoutAlert ?: "☀️ Hoy es tu día de salida · Horario oficial de entrega: 11:00 hrs"
+                    }
+
+                    item {
+                        CheckoutAlertBanner(
+                            alert = alertText,
+                            balance = uiState.guestStay.balanceMessage,
+                            isPaid = uiState.guestStay.isPaid
+                        )
+                    }
                 }
             }
 

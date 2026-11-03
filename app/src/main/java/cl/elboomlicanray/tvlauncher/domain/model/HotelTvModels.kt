@@ -87,9 +87,30 @@ val OFFICIAL_ACCOMMODATION_UNITS = listOf(
 
 enum class ScreenStayState {
     STANDBY,
+    CLEANING,
+    PREPARED,
     IN_STAY,
     CHECKOUT_DAY
 }
+
+@Immutable
+data class CleaningInfo(
+    val isDirty: Boolean = false,
+    val status: String = "LIMPIA", // "SUCIA" o "LIMPIA"
+    val sheetsCount: Int = 0,
+    val notes: String = ""
+)
+
+@Immutable
+data class NextGuestInfo(
+    val fullName: String = "",
+    val checkinTime: String = "15:00 hrs",
+    val adultsCount: Int = 2,
+    val childrenCount: Int = 0,
+    val totalGuests: Int = 2,
+    val sheetsCount: Int = 0,
+    val specialRequests: String = ""
+)
 
 @Immutable
 data class GuestStayInfo(
@@ -126,6 +147,9 @@ data class GuestStayInfo(
     val checkoutAlert: String? = null,
     val wifiNetwork: String = "El Boom Starlink",
     val wifiPassword: String = "licanray_paraiso",
+    val wifiSpeedText: String = "Starlink Satelital Alta Velocidad",
+    val cleaningInfo: CleaningInfo = CleaningInfo(),
+    val nextGuestInfo: NextGuestInfo? = null,
     val hostWhatsapp: String = "+56972694597",
     val hostWhatsappFormatted: String = "+56 9 7269 4597"
 )

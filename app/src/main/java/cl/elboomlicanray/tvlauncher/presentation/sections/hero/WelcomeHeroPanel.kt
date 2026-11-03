@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import cl.elboomlicanray.tvlauncher.R
 import cl.elboomlicanray.tvlauncher.domain.model.GuestStayInfo
+import cl.elboomlicanray.tvlauncher.domain.model.ScreenStayState
 import cl.elboomlicanray.tvlauncher.presentation.components.TvIcon
 import cl.elboomlicanray.tvlauncher.presentation.theme.TvTokens
 import cl.elboomlicanray.tvlauncher.presentation.i18n.AppStringsCatalog
@@ -161,16 +162,67 @@ fun WelcomeHeroPanel(
                 .padding(horizontal = 22.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            val isCleaning = guestStay.screenState == ScreenStayState.CLEANING
+            val isPrepared = guestStay.screenState == ScreenStayState.PREPARED
+            val isStandby = guestStay.screenState == ScreenStayState.STANDBY
+
+            val headerPrefix = when {
+                isCleaning -> "ALISTAMIENTO EN CURSO"
+                isPrepared -> "ALOJAMIENTO PREPARADO"
+                else -> strings.welcomePrefix
+            }
+
+            val headerPrefixColor = when {
+                isCleaning -> Color(0xFFF59E0B)
+                isPrepared -> Color(0xFF10B981)
+                else -> TvTokens.CyanNeon
+            }
+
+            val headerMainTitle = when {
+                isCleaning -> "Aseo pendiente"
+                isPrepared -> "Listo e impecable"
+                isStandby -> "Alojamiento disponible"
+                else -> guestGreeting
+            }
+
+            val badgeText = when {
+                isCleaning -> "⚠️ ALOJAMIENTO PENDIENTE DE ASEO"
+                isPrepared -> "✓ PREPARADO · INGRESO 15:00"
+                isStandby -> "ALOJAMIENTO DISPONIBLE"
+                else -> strings.bookingConfirmed
+            }
+
+            val badgeColor = when {
+                isCleaning -> Color(0xFFF59E0B)
+                isPrepared -> Color(0xFF10B981)
+                isStandby -> Color(0xFF38BDF8)
+                else -> Color(0xFF10B981)
+            }
+
+            val badgeBg = when {
+                isCleaning -> Color(0x33F59E0B)
+                isPrepared -> Color(0x3310B981)
+                isStandby -> Color(0x3338BDF8)
+                else -> Color(0x3310B981)
+            }
+
+            val badgeTextColor = when {
+                isCleaning -> Color(0xFFFDE047)
+                isPrepared -> TvTokens.EmeraldSuccessText
+                isStandby -> TvTokens.BlueSky
+                else -> TvTokens.EmeraldSuccessText
+            }
+
             // TÍTULO Y ALOJAMIENTO
             Column {
                 Text(
-                    text = strings.welcomePrefix,
-                    color = TvTokens.CyanNeon,
+                    text = headerPrefix,
+                    color = headerPrefixColor,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = guestGreeting,
+                    text = headerMainTitle,
                     color = Color.White,
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Black,
@@ -210,25 +262,19 @@ fun WelcomeHeroPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(
-                        if (guestStay.isOccupied) Color(0x3310B981) else Color(0x3338BDF8)
-                    )
-                    .border(
-                        1.dp,
-                        if (guestStay.isOccupied) Color(0xFF34D399).copy(alpha = 0.8f) else Color(0xFF38BDF8).copy(alpha = 0.8f),
-                        RoundedCornerShape(50)
-                    )
+                    .background(badgeBg)
+                    .border(1.dp, badgeColor.copy(alpha = 0.8f), RoundedCornerShape(50))
                     .padding(horizontal = 11.dp, vertical = 4.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .size(14.dp)
                         .clip(CircleShape)
-                        .background(if (guestStay.isOccupied) Color(0xFF10B981) else Color(0xFF38BDF8)),
+                        .background(badgeColor),
                     contentAlignment = Alignment.Center
                 ) {
                     TvIcon(
-                        name = "check",
+                        name = if (isCleaning) "settings" else "check",
                         size = 9.dp,
                         color = Color.White,
                         strokeWidth = 2.6f
@@ -236,69 +282,174 @@ fun WelcomeHeroPanel(
                 }
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (guestStay.isOccupied) strings.bookingConfirmed else strings.availableStatus,
-                    color = if (guestStay.isOccupied) TvTokens.EmeraldSuccessText else TvTokens.BlueSky,
+                    text = badgeText,
+                    color = badgeTextColor,
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
                 )
             }
 
-            // TABLA DE CHECK-IN / CHECK-OUT / SALDO
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Check-in
-                Row(
+            if (isCleaning) {
+                // FICHA OPERATIVA DE ASEO PARA PERSONAL DE LIMPIEZA
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TvIcon(name = "calendar", size = 13.dp, color = TvTokens.TextSlate)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = strings.checkinLabel, color = TvTokens.TextSlate, fontSize = 11.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "🛏️ Sábanas a ingresar", color = TvTokens.TextSlate, fontSize = 11.sp)
+                        Text(
+                            text = "${guestStay.cleaningInfo.sheetsCount} juegos",
+                            color = Color(0xFFFDE047),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    Text(text = checkinText, color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                }
 
-                // Check-out
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TvIcon(name = "calendar", size = 13.dp, color = TvTokens.TextSlate)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = strings.checkoutLabel, color = TvTokens.TextSlate, fontSize = 11.sp)
+                    val ngTotal = guestStay.nextGuestInfo?.totalGuests ?: guestStay.cleaningInfo.sheetsCount
+                    val ngAdults = guestStay.nextGuestInfo?.adultsCount ?: 2
+                    val ngChildren = guestStay.nextGuestInfo?.childrenCount ?: 0
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "👥 Huéspedes (Toallas)", color = TvTokens.TextSlate, fontSize = 11.sp)
+                        Text(
+                            text = "$ngTotal pers ($ngAdults Ad · $ngChildren Niñ)",
+                            color = Color.White,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
-                    Text(text = checkoutText, color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                }
 
-                // Saldo pendiente
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TvIcon(name = "card", size = 13.dp, color = TvTokens.TextSlate)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = strings.pendingBalance, color = TvTokens.TextSlate, fontSize = 11.sp)
+                    if (!guestStay.nextGuestInfo?.specialRequests.isNullOrBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "⚠️ Petición especial", color = Color(0xFFF59E0B), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = guestStay.nextGuestInfo?.specialRequests ?: "",
+                                color = Color(0xFFFDE047),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "🕒 Próximo ingreso", color = TvTokens.TextSlate, fontSize = 11.sp)
+                            Text(
+                                text = "15:00 hrs · ${guestStay.nextGuestInfo?.fullName ?: ""}",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
-                    Text(
-                        text = balanceText,
-                        color = if (hasPendingBalance) TvTokens.AmberPending else TvTokens.EmeraldSuccessText,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                }
+            } else if (isPrepared) {
+                // ALOJAMIENTO PREPARADO
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "👤 Próximo Huésped", color = TvTokens.TextSlate, fontSize = 11.sp)
+                        Text(
+                            text = guestStay.nextGuestInfo?.fullName?.ifBlank { "Por confirmar" } ?: "Por confirmar",
+                            color = Color.White,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "🕒 Ingreso Oficial", color = TvTokens.TextSlate, fontSize = 11.sp)
+                        Text(text = "Hoy · 15:00 hrs", color = Color(0xFF4ADE80), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "🕒 Salida Oficial", color = TvTokens.TextSlate, fontSize = 11.sp)
+                        Text(text = "11:00 hrs", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            } else {
+                // REGULAR / STANDBY / IN_STAY
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Check-in
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TvIcon(name = "calendar", size = 13.dp, color = TvTokens.TextSlate)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = strings.checkinLabel, color = TvTokens.TextSlate, fontSize = 11.sp)
+                        }
+                        Text(text = checkinText, color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Check-out
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TvIcon(name = "calendar", size = 13.dp, color = TvTokens.TextSlate)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = strings.checkoutLabel, color = TvTokens.TextSlate, fontSize = 11.sp)
+                        }
+                        Text(text = checkoutText, color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Saldo pendiente
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TvIcon(name = "card", size = 13.dp, color = TvTokens.TextSlate)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = strings.pendingBalance, color = TvTokens.TextSlate, fontSize = 11.sp)
+                        }
+                        Text(
+                            text = balanceText,
+                            color = if (hasPendingBalance) TvTokens.AmberPending else TvTokens.EmeraldSuccessText,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
             // BOTÓN DE ACCIÓN: PAGAR SALDO EN EL SITIO WEB
-            if (hasPendingBalance) {
+            if (hasPendingBalance && !isCleaning && !isPrepared) {
                 val payInteractionSource = remember { MutableInteractionSource() }
                 val isPayFocused by payInteractionSource.collectIsFocusedAsState()
 

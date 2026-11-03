@@ -8,6 +8,8 @@ import cl.elboomlicanray.tvlauncher.domain.model.WeatherInfo
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicCabinDetails
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicTouristAttraction
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicPropertyInfo
+import cl.elboomlicanray.tvlauncher.domain.model.CleaningInfo
+import cl.elboomlicanray.tvlauncher.domain.model.NextGuestInfo
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicBedroom
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicTinajaOption
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicFaq
@@ -71,20 +73,93 @@ class HotelTvRepository @Inject constructor(
                     val wifiNetwork = if (rawWifiNet.isNotBlank()) rawWifiNet else (wifiObj?.optString("network", "El Boom Starlink") ?: "El Boom Starlink")
                     val rawWifiPass = wifiObj?.optString("wifiPassword", "") ?: ""
                     val wifiPass = if (rawWifiPass.isNotBlank()) rawWifiPass else (wifiObj?.optString("password", "licanray_paraiso") ?: "licanray_paraiso")
+                    val wifiSpeedText = wifiObj?.optString("speedText", "Starlink Satelital Alta Velocidad") ?: "Starlink Satelital Alta Velocidad"
 
                     val servicesObj = json.optJSONObject("services")
                     val hostWhatsapp = servicesObj?.optString("hostWhatsapp", "+56972694597") ?: "+56972694597"
                     val hostWhatsappFormatted = servicesObj?.optString("hostWhatsappFormatted", "+56 9 7269 4597") ?: "+56 9 7269 4597"
+
+                    val cleaningObj = json.optJSONObject("cleaning")
+                    val isDirty = cleaningObj?.optBoolean("isDirty", false) ?: false
+                    val cleaningStatus = cleaningObj?.optString("status", if (isDirty) "SUCIA" else "LIMPIA") ?: if (isDirty) "SUCIA" else "LIMPIA"
+                    val cleaningSheets = cleaningObj?.optInt("sheetsCount", 0) ?: 0
+                    val cleaningNotes = cleaningObj?.optString("notes", "") ?: ""
+                    val cleaningInfo = CleaningInfo(
+                        isDirty = isDirty,
+                        status = cleaningStatus,
+                        sheetsCount = cleaningSheets,
+                        notes = cleaningNotes
+                    )
+
+                    val nextGuestObj = json.optJSONObject("nextGuest")
+                    val nextGuestInfo = if (nextGuestObj != null) {
+                        val ngGuests = nextGuestObj.optJSONObject("guestsCount")
+                        val ngAdults = ngGuests?.optInt("adults", 2) ?: 2
+                        val ngChildren = ngGuests?.optInt("children", 0) ?: 0
+                        val ngTotal = ngGuests?.optInt("total", ngAdults + ngChildren) ?: (ngAdults + ngChildren)
+                        NextGuestInfo(
+                            fullName = nextGuestObj.optString("fullName", ""),
+                            checkinTime = nextGuestObj.optString("checkinTime", "15:00 hrs"),
+                            adultsCount = ngAdults,
+                            childrenCount = ngChildren,
+                            totalGuests = ngTotal,
+                            sheetsCount = nextGuestObj.optInt("sheetsCount", cleaningSheets),
+                            specialRequests = nextGuestObj.optString("specialRequests", "")
+                        )
+                    } else null
+
+                    val isCleaning = screenStr.equals("CLEANING", ignoreCase = true) ||
+                            (isDirty && !isOccupied)
+                    val isPrepared = screenStr.equals("PREPARED", ignoreCase = true)
+
+                    if (isCleaning) {
+                        return@withContext Result.success(
+                            GuestStayInfo(
+                                isOccupied = false,
+                                screenState = ScreenStayState.CLEANING,
+                                title = "Alistamiento en curso",
+                                subtitle = "Aseo pendiente · ${unit.name}",
+                                wifiNetwork = wifiNetwork,
+                                wifiPassword = wifiPass,
+                                wifiSpeedText = wifiSpeedText,
+                                cleaningInfo = cleaningInfo,
+                                nextGuestInfo = nextGuestInfo,
+                                hostWhatsapp = hostWhatsapp,
+                                hostWhatsappFormatted = hostWhatsappFormatted
+                            )
+                        )
+                    }
+
+                    if (isPrepared) {
+                        return@withContext Result.success(
+                            GuestStayInfo(
+                                isOccupied = false,
+                                screenState = ScreenStayState.PREPARED,
+                                title = "Alojamiento preparado",
+                                subtitle = "Listo para recibir a ${nextGuestInfo?.fullName ?: "nuevo huésped"}",
+                                wifiNetwork = wifiNetwork,
+                                wifiPassword = wifiPass,
+                                wifiSpeedText = wifiSpeedText,
+                                cleaningInfo = cleaningInfo,
+                                nextGuestInfo = nextGuestInfo,
+                                hostWhatsapp = hostWhatsapp,
+                                hostWhatsappFormatted = hostWhatsappFormatted
+                            )
+                        )
+                    }
 
                     if (!isOccupied) {
                         return@withContext Result.success(
                             GuestStayInfo(
                                 isOccupied = false,
                                 screenState = ScreenStayState.STANDBY,
-                                title = json.optString("title", "Bienvenido a ${unit.name}"),
+                                title = json.optString("title", "Alojamiento disponible"),
                                 subtitle = json.optString("subtitle", "Alojamientos El Boom · Lican Ray"),
                                 wifiNetwork = wifiNetwork,
                                 wifiPassword = wifiPass,
+                                wifiSpeedText = wifiSpeedText,
+                                cleaningInfo = cleaningInfo,
+                                nextGuestInfo = nextGuestInfo,
                                 hostWhatsapp = hostWhatsapp,
                                 hostWhatsappFormatted = hostWhatsappFormatted
                             )
@@ -161,6 +236,9 @@ class HotelTvRepository @Inject constructor(
                             checkoutAlert = checkoutAlert,
                             wifiNetwork = wifiNetwork,
                             wifiPassword = wifiPass,
+                            wifiSpeedText = wifiSpeedText,
+                            cleaningInfo = cleaningInfo,
+                            nextGuestInfo = nextGuestInfo,
                             hostWhatsapp = hostWhatsapp,
                             hostWhatsappFormatted = hostWhatsappFormatted
                         )
@@ -174,7 +252,7 @@ class HotelTvRepository @Inject constructor(
                 GuestStayInfo(
                     isOccupied = false,
                     screenState = ScreenStayState.STANDBY,
-                    title = "Bienvenido a ${unit.name}",
+                    title = "Alojamiento disponible",
                     subtitle = "Alojamientos El Boom · Lican Ray",
                     wifiNetwork = "El Boom Starlink",
                     wifiPassword = "licanray_paraiso",
