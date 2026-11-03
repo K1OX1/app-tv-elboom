@@ -168,6 +168,7 @@ fun TouristGuideDialog(
 
     LaunchedEffect(Unit) {
         isVisible = true
+        kotlinx.coroutines.delay(120)
         try {
             initialActionFocusRequester.requestFocus()
         } catch (_: Exception) {
@@ -283,10 +284,10 @@ fun TouristGuideDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 48.dp, vertical = 24.dp)
+                        .padding(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 12.dp)
                 ) {
                     // ---------------------------------------------------------------------
-                    // BARRA SUPERIOR: TÍTULO, FILTROS HORIZONTALES, DIVISOR Y CERRAR
+                    // BARRA SUPERIOR: TÍTULO, CÁPSULA DE FILTROS Y BOTÓN CERRAR (ANTI-SQUASH)
                     // ---------------------------------------------------------------------
                     Row(
                         modifier = Modifier
@@ -299,22 +300,27 @@ fun TouristGuideDialog(
                         Column {
                             Text(
                                 text = strings.guideTitle,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 3.6.sp,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
                                 color = Color.White
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(1.dp))
                             Text(
                                 text = strings.guideSubtitle,
-                                fontSize = 11.5.sp,
+                                fontSize = 10.5.sp,
                                 color = Color(0xFFBAC4D0)
                             )
                         }
 
-                        // Filtros horizontales elegantes con alto contraste al foco
+                        // Filtros de categoría en cápsula oscura de alto contraste
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.Black.copy(alpha = 0.50f))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(50))
+                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             filterCategories.forEach { (catKey, catLabel) ->
@@ -322,11 +328,11 @@ fun TouristGuideDialog(
                                 val interactionSource = remember { MutableInteractionSource() }
                                 val isFocused by interactionSource.collectIsFocusedAsState()
 
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                Box(
+                                    contentAlignment = Alignment.Center,
                                     modifier = Modifier
                                         .graphicsLayer {
-                                            val scale = if (isFocused) 1.08f else 1.0f
+                                            val scale = if (isFocused) 1.06f else 1.0f
                                             scaleX = scale
                                             scaleY = scale
                                         }
@@ -334,7 +340,7 @@ fun TouristGuideDialog(
                                         .background(
                                             when {
                                                 isFocused -> Color(0xFF00E5FF)
-                                                isSelected -> Color(0x3300E5FF)
+                                                isSelected -> Color.White.copy(alpha = 0.16f)
                                                 else -> Color.Transparent
                                             }
                                         )
@@ -346,7 +352,7 @@ fun TouristGuideDialog(
                                             },
                                             color = when {
                                                 isFocused -> Color.White
-                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.70f)
+                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.60f)
                                                 else -> Color.Transparent
                                             },
                                             shape = RoundedCornerShape(50)
@@ -358,81 +364,71 @@ fun TouristGuideDialog(
                                             selectedFilter = catKey
                                         }
                                         .focusable(interactionSource = interactionSource)
-                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
                                 ) {
                                     Text(
                                         text = catLabel,
-                                        fontSize = 11.5.sp,
+                                        fontSize = 10.5.sp,
                                         fontWeight = when {
                                             isFocused -> FontWeight.Black
                                             isSelected -> FontWeight.Bold
                                             else -> FontWeight.Medium
                                         },
-                                        letterSpacing = 0.8.sp,
+                                        letterSpacing = 0.4.sp,
                                         color = when {
                                             isFocused -> Color(0xFF030712)
                                             isSelected -> Color.White
-                                            else -> Color(0xFFBAC4D0)
-                                        }
+                                            else -> Color(0xFFCBD5E1)
+                                        },
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
                         }
 
-                        // Grupo derecho: Divisor fino + Botón Cerrar
+                        // Botón Cerrar: protegido contra compresión (softWrap = false)
+                        val closeInteraction = remember { MutableInteractionSource() }
+                        val closeFocused by closeInteraction.collectIsFocusedAsState()
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .focusRequester(closeFocusRequester)
+                                .graphicsLayer {
+                                    val scale = if (closeFocused) 1.08f else 1.0f
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                                .clip(RoundedCornerShape(50))
+                                .background(if (closeFocused) Color.White else Color.Black.copy(alpha = 0.50f))
+                                .border(
+                                    width = if (closeFocused) 2.dp else 1.dp,
+                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.20f),
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickable(
+                                    interactionSource = closeInteraction,
+                                    indication = null
+                                ) {
+                                    onDismiss()
+                                }
+                                .focusable(interactionSource = closeInteraction)
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(18.dp)
-                                    .background(Color.White.copy(alpha = 0.25f))
+                            CloseCanvasIcon(
+                                color = if (closeFocused) Color(0xFF030712) else Color.White,
+                                modifier = Modifier.size(11.dp)
                             )
-
-                            val closeInteraction = remember { MutableInteractionSource() }
-                            val closeFocused by closeInteraction.collectIsFocusedAsState()
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier
-                                    .focusRequester(closeFocusRequester)
-                                    .graphicsLayer {
-                                        val scale = if (closeFocused) 1.08f else 1.0f
-                                        scaleX = scale
-                                        scaleY = scale
-                                    }
-                                    .clip(RoundedCornerShape(50))
-                                    .background(
-                                        if (closeFocused) Color.White else Color.Black.copy(alpha = 0.40f)
-                                    )
-                                    .border(
-                                        width = if (closeFocused) 2.dp else 1.dp,
-                                        color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
-                                        shape = RoundedCornerShape(50)
-                                    )
-                                    .clickable(
-                                        interactionSource = closeInteraction,
-                                        indication = null
-                                    ) {
-                                        onDismiss()
-                                    }
-                                    .focusable(interactionSource = closeInteraction)
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                CloseCanvasIcon(
-                                    color = if (closeFocused) Color(0xFF030712) else Color.White,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = strings.close,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (closeFocused) FontWeight.ExtraBold else FontWeight.Medium,
-                                    color = if (closeFocused) Color(0xFF030712) else Color.White
-                                )
-                            }
+                            Text(
+                                text = strings.close,
+                                fontSize = 11.5.sp,
+                                fontWeight = if (closeFocused) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                color = if (closeFocused) Color(0xFF030712) else Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
 
@@ -447,8 +443,8 @@ fun TouristGuideDialog(
                         Column(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
-                                .widthIn(max = 400.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                .widthIn(max = 480.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             // 1. Badge de Categoría con borde fino turquesa
                             Box(
@@ -456,32 +452,34 @@ fun TouristGuideDialog(
                                     .clip(RoundedCornerShape(50))
                                     .background(Color(0x3300E5FF))
                                     .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.85f), RoundedCornerShape(50))
-                                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                                    .padding(horizontal = 12.dp, vertical = 3.dp)
                             ) {
                                 Text(
                                     text = selectedAttraction.category.uppercase(),
-                                    fontSize = 9.5.sp,
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.2.sp,
                                     color = Color(0xFF00E5FF)
                                 )
                             }
 
-                            // 2. Nombre del destino (jerarquía tipográfica elegante y proporcionada)
+                            // 2. Nombre del destino (jerarquía tipográfica proporcionada para no desbordar)
                             Text(
                                 text = selectedAttraction.name,
-                                fontSize = 46.sp,
+                                fontSize = 36.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
-                                lineHeight = 50.sp
+                                lineHeight = 40.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
 
-                            // 3. Descripción breve
+                            // 3. Descripción breve (2 líneas exactas)
                             Text(
                                 text = getCleanDescription(selectedAttraction),
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 color = Color(0xFFE2E8F0),
-                                lineHeight = 20.sp,
+                                lineHeight = 18.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -498,11 +496,11 @@ fun TouristGuideDialog(
                                 ) {
                                     StarCanvasIcon(
                                         color = Color(0xFFFBBF24),
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Text(
                                         text = selectedAttraction.rating.ifBlank { "4.7" },
-                                        fontSize = 13.sp,
+                                        fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
@@ -512,7 +510,7 @@ fun TouristGuideDialog(
                                 Box(
                                     modifier = Modifier
                                         .width(1.dp)
-                                        .height(13.dp)
+                                        .height(12.dp)
                                         .background(Color.White.copy(alpha = 0.35f))
                                 )
 
@@ -523,7 +521,7 @@ fun TouristGuideDialog(
                                 ) {
                                     CarCanvasIcon(
                                         color = Color.White.copy(alpha = 0.90f),
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                     val distanceLabel = buildString {
                                         if (selectedAttraction.drivingTime.isNotBlank()) {
@@ -538,7 +536,7 @@ fun TouristGuideDialog(
                                     }
                                     Text(
                                         text = distanceLabel,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         color = Color.White.copy(alpha = 0.90f)
                                     )
                                 }
@@ -553,9 +551,9 @@ fun TouristGuideDialog(
                             }
 
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(top = 2.dp)
                             ) {
                                 // A. BOTÓN PRINCIPAL: "Ver video" (si el destino tiene video disponible)
                                 if (hasVideo) {
@@ -564,7 +562,7 @@ fun TouristGuideDialog(
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
                                         modifier = Modifier
                                             .focusRequester(initialActionFocusRequester)
                                             .graphicsLayer {
@@ -595,17 +593,19 @@ fun TouristGuideDialog(
                                                 }
                                             }
                                             .focusable(interactionSource = videoInteraction)
-                                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                                            .padding(horizontal = 16.dp, vertical = 7.dp)
                                     ) {
                                         PlayCanvasIcon(
                                             color = Color.White,
-                                            modifier = Modifier.size(12.dp)
+                                            modifier = Modifier.size(11.dp)
                                         )
                                         Text(
                                             text = strings.watchVideo,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color.White
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -619,7 +619,7 @@ fun TouristGuideDialog(
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
                                         modifier = focusModifier
                                             .graphicsLayer {
                                                 val scale = if (waFocused) 1.08f else 1.0f
@@ -660,17 +660,19 @@ fun TouristGuideDialog(
                                                 }
                                             }
                                             .focusable(interactionSource = waInteraction)
-                                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                                            .padding(horizontal = 16.dp, vertical = 7.dp)
                                     ) {
                                         WhatsAppCanvasIcon(
                                             color = if (waFocused) Color(0xFF030712) else Color(0xFF25D366),
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(14.dp)
                                         )
                                         Text(
                                             text = if (isSendingWhatsApp) strings.sendingToWhatsApp else strings.sendToWhatsApp,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (waFocused) Color(0xFF030712) else Color.White
+                                            color = if (waFocused) Color(0xFF030712) else Color.White,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -681,7 +683,7 @@ fun TouristGuideDialog(
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                                     modifier = Modifier
                                         .graphicsLayer {
                                             val scale = if (mapFocused) 1.08f else 1.0f
@@ -705,17 +707,19 @@ fun TouristGuideDialog(
                                             openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
                                         }
                                         .focusable(interactionSource = mapInteraction)
-                                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                                        .padding(horizontal = 16.dp, vertical = 7.dp)
                                 ) {
                                     ArrowOutwardCanvasIcon(
                                         color = if (mapFocused) Color(0xFF030712) else Color(0xFF00E5FF),
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(11.dp)
                                     )
                                     Text(
                                         text = strings.howToGetThere,
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (mapFocused) Color(0xFF030712) else Color.White
+                                        color = if (mapFocused) Color(0xFF030712) else Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -732,29 +736,29 @@ fun TouristGuideDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 14.dp),
+                            .padding(bottom = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 1. Fila de Horario, Precio y Temporada (estilo refinado de 58dp)
+                        // 1. Fila de Horario, Precio y Temporada (estilo refinado de 50dp)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
                             modifier = Modifier
-                                .height(58.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xD90A0F1D))
-                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
-                                .padding(horizontal = 18.dp, vertical = 8.dp)
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
                             // Horario
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 ClockCanvasIcon(
                                     color = Color(0xFF00E5FF),
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Column {
                                     Text(
@@ -766,9 +770,11 @@ fun TouristGuideDialog(
                                     )
                                     Text(
                                         text = cleanHours(selectedAttraction.hours, strings),
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -777,18 +783,18 @@ fun TouristGuideDialog(
                             Box(
                                 modifier = Modifier
                                     .width(1.dp)
-                                    .height(24.dp)
+                                    .height(20.dp)
                                     .background(Color.White.copy(alpha = 0.20f))
                             )
 
                             // Precio
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 TagCanvasIcon(
                                     color = Color(0xFFFBBF24),
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Column {
                                     Text(
@@ -800,9 +806,11 @@ fun TouristGuideDialog(
                                     )
                                     Text(
                                         text = cleanPrice(selectedAttraction.price, strings),
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -811,18 +819,18 @@ fun TouristGuideDialog(
                             Box(
                                 modifier = Modifier
                                     .width(1.dp)
-                                    .height(24.dp)
+                                    .height(20.dp)
                                     .background(Color.White.copy(alpha = 0.20f))
                             )
 
                             // Temporada
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 CalendarCanvasIcon(
                                     color = Color(0xFF34D399),
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Column {
                                     Text(
@@ -834,15 +842,17 @@ fun TouristGuideDialog(
                                     )
                                     Text(
                                         text = cleanSeason(selectedAttraction.season, strings),
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
                         }
 
-                        // 2. Tarjeta QR elegante con la misma altura (58.dp) y foco interactivo
+                        // 2. Tarjeta QR elegante con la misma altura (50.dp) y foco interactivo
                         val qrInteraction = remember { MutableInteractionSource() }
                         val qrFocused by qrInteraction.collectIsFocusedAsState()
 
@@ -850,18 +860,18 @@ fun TouristGuideDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier
-                                .height(58.dp)
+                                .height(50.dp)
                                 .graphicsLayer {
                                     val scale = if (qrFocused) 1.05f else 1.0f
                                     scaleX = scale
                                     scaleY = scale
                                 }
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (qrFocused) Color(0xEE132338) else Color(0xD90A0F1D))
                                 .border(
                                     width = if (qrFocused) 2.dp else 1.dp,
                                     color = if (qrFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.14f),
-                                    shape = RoundedCornerShape(14.dp)
+                                    shape = RoundedCornerShape(12.dp)
                                 )
                                 .clickable(
                                     interactionSource = qrInteraction,
@@ -870,11 +880,11 @@ fun TouristGuideDialog(
                                     openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
                                 }
                                 .focusable(interactionSource = qrInteraction)
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(44.dp)
+                                    .size(38.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color.White)
                                     .padding(2.dp)
@@ -891,13 +901,17 @@ fun TouristGuideDialog(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     letterSpacing = 0.4.sp,
-                                    color = if (qrFocused) Color(0xFF00E5FF) else Color.White
+                                    color = if (qrFocused) Color(0xFF00E5FF) else Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(1.dp))
                                 Text(
                                     text = strings.scanForRoute,
                                     fontSize = 8.5.sp,
-                                    color = Color(0xFF94A3B8)
+                                    color = Color(0xFF94A3B8),
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -976,18 +990,18 @@ fun TouristGuideDialog(
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
                                 // Nombre del destino: Insignia luminosa cyan al estar enfocado
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(if (isFocused) Color(0xFF00E5FF) else Color.Transparent)
-                                        .padding(horizontal = if (isFocused) 8.dp else 2.dp, vertical = if (isFocused) 2.dp else 0.dp)
+                                        .padding(horizontal = if (isFocused) 6.dp else 2.dp, vertical = if (isFocused) 2.dp else 0.dp)
                                 ) {
                                     Text(
                                         text = getCarouselDisplayName(item.name),
-                                        fontSize = 11.sp,
+                                        fontSize = 10.5.sp,
                                         fontWeight = when {
                                             isFocused -> FontWeight.Black
                                             isSelected -> FontWeight.Bold
@@ -1004,13 +1018,13 @@ fun TouristGuideDialog(
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(3.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
 
                                 // Indicador turquesa bajo el destino seleccionado
                                 Box(
                                     modifier = Modifier
-                                        .width(38.dp)
-                                        .height(2.5.dp)
+                                        .width(34.dp)
+                                        .height(2.2.dp)
                                         .background(
                                             color = if (isSelected) Color(0xFF00E5FF) else Color.Transparent,
                                             shape = RoundedCornerShape(1.dp)
@@ -1326,12 +1340,18 @@ private fun cleanHours(raw: String, strings: cl.elboomlicanray.tvlauncher.presen
     val clean = raw.trim()
     if (clean.isBlank()) return strings.freeAccess
     if (clean.contains("libre", ignoreCase = true) || clean.contains("24", ignoreCase = true)) return strings.freeAccess
+    if (clean.contains("(") && clean.contains(")")) {
+        val inside = clean.substringAfter("(").substringBefore(")").trim()
+        if (inside.isNotBlank()) return inside
+    }
     return clean
 }
 
 private fun cleanPrice(raw: String, strings: cl.elboomlicanray.tvlauncher.presentation.i18n.AppStrings): String {
     val clean = raw.trim()
     if (clean.isBlank() || clean.equals("0", ignoreCase = true)) return strings.freePrice
+    if (clean.contains("Aporte", ignoreCase = true)) return "Aporte voluntario"
+    if (clean.contains("Gratis", ignoreCase = true)) return strings.freePrice
     return clean
 }
 

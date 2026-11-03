@@ -1,8 +1,8 @@
 {
-  "versionCode": 36,
-  "versionName": "1.0.35",
-  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.35/app-release.apk",
-  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.35/app-release.apk",
-  "changelog": "Diseño perfeccionado de guía turística y navegación TV D-Pad (v1.0.35 build 36)",
-  "sha256": "49C1FECD7AD6235DE2D9202B668D43B469A145A2965F2A43664DC6880C29AAC5"
+  "versionCode": 37,
+  "versionName": "1.0.36",
+  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.36/app-release.apk",
+  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.36/app-release.apk",
+  "changelog": "Corrección de proporciones, padding anti-solapamiento y botón cerrar en guía turística (v1.0.36 build 37)",
+  "sha256": "A23D74A9B9D05C101E8D503E9BBA7BEDDD4A9C1C2A0BA98FFE3B9CA877F02E76"
 }
