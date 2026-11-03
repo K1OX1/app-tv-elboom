@@ -1320,7 +1320,28 @@ private fun FullScreenVideoOverlay(
             .background(Color.Black)
     ) {
         if (youtubeVideoId != null) {
-            val embedUrl = "https://www.youtube-nocookie.com/embed/$youtubeVideoId?autoplay=1&controls=1&rel=0&iv_load_policy=3&playsinline=1"
+            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            val htmlContent = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
+                        iframe { width: 100%; height: 100%; border: none; }
+                    </style>
+                </head>
+                <body>
+                    <iframe 
+                        src="https://www.youtube.com/embed/$youtubeVideoId?autoplay=1&controls=1&rel=0&modestbranding=1&enablejsapi=1&origin=https://elboom.cl" 
+                        title="Video Tour" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                        allowfullscreen>
+                    </iframe>
+                </body>
+                </html>
+            """.trimIndent()
 
             AndroidView(
                 factory = { ctx ->
@@ -1329,14 +1350,20 @@ private fun FullScreenVideoOverlay(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.mediaPlaybackRequiresUserGesture = false
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
+                        settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            databaseEnabled = true
+                            mediaPlaybackRequiresUserGesture = false
+                            loadWithOverviewMode = true
+                            useWideViewPort = true
+                            allowFileAccess = true
+                            allowContentAccess = true
+                            userAgentString = desktopUserAgent
+                        }
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
-                        loadUrl(embedUrl)
+                        loadDataWithBaseURL("https://elboom.cl", htmlContent, "text/html", "UTF-8", null)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
