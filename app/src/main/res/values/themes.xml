@@ -1,0 +1,9 @@
+<resources>
+    <!-- Tema nativo sin barra de acción para Jetpack Compose en TV -->
+    <style name="Theme.ElBoomTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowOverscan">true</item>
+    </style>
+</resources>

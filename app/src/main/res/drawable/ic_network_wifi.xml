@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Ícono Wi-Fi Elegante Estilo Apple SF Symbols -->
+    <!-- Arco exterior -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M2,8.8c5.5,-5.1 14.5,-5.1 20,0" />
+    <!-- Arco medio -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M5.5,12.5c3.6,-3.3 9.4,-3.3 13,0" />
+    <!-- Arco interior -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M9,16.2c1.7,-1.5 4.3,-1.5 6,0" />
+    <!-- Punto central inferior -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,19.5m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0" />
+</vector>

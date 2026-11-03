@@ -1,0 +1,55 @@
+# Baseline Profile for El Boom Lican Ray TV Launcher
+# Provides Ahead-Of-Time (AOT) compilation on low-end Android TV hardware (Amlogic, MediaTek, Realtek)
+
+# Core App & Launcher Lifecycle
+Lcl/elboomlicanray/tvlauncher/TvLauncherApp;
+Lcl/elboomlicanray/tvlauncher/MainActivity;
+Lcl/elboomlicanray/tvlauncher/MainActivity$onCreate$$inlined$addCallback$default$1;
+Lcl/elboomlicanray/tvlauncher/data/helper/AppLauncherHelper;
+Lcl/elboomlicanray/tvlauncher/data/helper/KioskPermissionHelper;
+Lcl/elboomlicanray/tvlauncher/service/ZappingKioskAccessibilityService;
+Lcl/elboomlicanray/tvlauncher/service/KioskShellCommander;
+Lcl/elboomlicanray/tvlauncher/service/KioskState;
+Lcl/elboomlicanray/tvlauncher/data/repository/AppRepository;
+Lcl/elboomlicanray/tvlauncher/data/repository/AppRepositoryImpl;
+Lcl/elboomlicanray/tvlauncher/di/AppModule;
+
+# UI State & ViewModels
+Lcl/elboomlicanray/tvlauncher/presentation/home/HomeViewModel;
+Lcl/elboomlicanray/tvlauncher/presentation/home/HomeUiState;
+Lcl/elboomlicanray/tvlauncher/presentation/home/HomeScreenKt;
+Lcl/elboomlicanray/tvlauncher/presentation/home/HotelModalsKt;
+Lcl/elboomlicanray/tvlauncher/presentation/components/AppleTvAppCardKt;
+Lcl/elboomlicanray/tvlauncher/presentation/components/LiquidGlassContainerKt;
+Lcl/elboomlicanray/tvlauncher/presentation/theme/ThemeKt;
+Lcl/elboomlicanray/tvlauncher/presentation/theme/ColorKt;
+Lcl/elboomlicanray/tvlauncher/presentation/theme/TypeKt;
+Lcl/elboomlicanray/tvlauncher/domain/model/AppItem;
+Lcl/elboomlicanray/tvlauncher/domain/model/QuickServiceItem;
+
+# Jetpack Compose for TV & UI Toolkit
+Landroidx/compose/runtime/Composer;
+Landroidx/compose/runtime/RecomposeScopeImpl;
+Landroidx/compose/runtime/SnapshotMutableStateImpl;
+Landroidx/compose/ui/platform/AndroidComposeView;
+Landroidx/compose/foundation/interaction/MutableInteractionSource;
+Landroidx/compose/foundation/interaction/FocusInteraction$Focus;
+Landroidx/compose/ui/focus/FocusRequester;
+Landroidx/tv/foundation/lazy/list/TvLazyListState;
+Landroidx/tv/material3/CardDefaults;
+Landroidx/tv/material3/MaterialTheme;
+
+# ExoPlayer & Media3 HLS Playback (Zero-Jank Stream Startup)
+Landroidx/media3/exoplayer/ExoPlayer;
+Landroidx/media3/exoplayer/ExoPlayerImpl;
+Landroidx/media3/exoplayer/DefaultLoadControl;
+Landroidx/media3/exoplayer/trackselection/DefaultTrackSelector;
+Landroidx/media3/exoplayer/DefaultRenderersFactory;
+Landroidx/media3/exoplayer/hls/HlsMediaSource;
+Landroidx/media3/ui/PlayerView;
+
+# Coil Image Loader & RGB_565 Fast Decoding
+Lcoil/ImageLoader;
+Lcoil/compose/AsyncImagePainter;
+Lcoil/memory/MemoryCache;
+Lcoil/disk/DiskCache;

@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">El Boom Lican Ray</string>
+    <string name="welcome_title">Bienvenido a Cabañas El Boom</string>
+    <string name="welcome_subtitle">Lican Ray · Lago Calafquén</string>
+    <string name="app_not_installed_format">La aplicación %1$s no está instalada en este televisor.</string>
+    <string name="section_streaming">Entretenimiento &amp; Streaming</string>
+    <string name="section_services">Servicios &amp; Experiencias de la Cabaña</string>
+    <string name="service_wifi">Wi-Fi &amp; Asistencia</string>
+    <string name="service_tour">Guía Turística Lago Calafquén</string>
+    <string name="service_hotsprings">Termas &amp; Tours</string>
+    <string name="service_roomservice">Desayuno &amp; Delivery Local</string>
+    <string name="accessibility_service_description">Protección de Control Remoto Kiosco El Boom</string>
+</resources>

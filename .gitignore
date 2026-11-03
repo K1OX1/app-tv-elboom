@@ -1,0 +1,22 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+app/build/
+.kotlin/
+captures/
+.externalNativeBuild
+.cxx
+
+# Credentials and keys
+*.jks
+*.keystore
+local.properties
+
+# Temporary files and screenshots
+screen_*.png
+head.bin
+test_download.apk
+app-release.apk

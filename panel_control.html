@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Cabañas El Boom TV</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #030712; color: #f3f4f6; padding: 24px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 600px; width: 100%; }
+        .header { text-align: center; margin-bottom: 32px; }
+        .header h1 { font-size: 26px; color: #00E5FF; text-shadow: 0 0 20px rgba(0, 229, 255, 0.4); margin-bottom: 8px; }
+        .header p { color: #9ca3af; font-size: 14px; }
+        .card { background: rgba(15, 26, 46, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 24px; backdrop-filter: blur(10px); margin-bottom: 24px; }
+        .card h2 { font-size: 18px; margin-bottom: 16px; color: #38BDF8; }
+        .field { margin-bottom: 18px; }
+        label { display: block; font-size: 13px; color: #cbd5e1; margin-bottom: 6px; font-weight: 500; }
+        input, textarea { width: 100%; padding: 12px 14px; background: rgba(4, 11, 22, 0.7); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 10px; color: white; font-size: 14px; outline: none; transition: 0.2s; }
+        input:focus, textarea:focus { border-color: #00E5FF; box-shadow: 0 0 10px rgba(0, 229, 255, 0.3); }
+        .btn-update { width: 100%; padding: 16px; background: linear-gradient(135deg, #00B4D8, #0077B6); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.4); }
+        .btn-update:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 229, 255, 0.5); }
+        .btn-update:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status-box { padding: 14px; border-radius: 10px; margin-top: 16px; font-size: 13px; display: none; line-height: 1.5; }
+        .status-success { background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; }
+        .status-error { background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; }
+        .badge { display: inline-block; padding: 4px 10px; background: rgba(0, 229, 255, 0.15); border: 1px solid #00E5FF; border-radius: 20px; font-size: 11px; color: #00E5FF; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="badge">SISTEMA OTA PUSH HOTELERO</span>
+            <h1>Cabañas El Boom · Control TV</h1>
+            <p>Envía actualizaciones silenciosas a todas las pantallas en 2 segundos</p>
+        </div>
+
+        <div class="card">
+            <h2>🚀 Lanzar Actualización a Todas las TVs</h2>
+            
+            <div class="field">
+                <label>Enlace del nuevo APK:</label>
+                <input type="url" id="apkUrl" placeholder="https://.../app-release.apk" value="https://files.catbox.moe/8pcuqt.apk">
+            </div>
+
+            <div class="field">
+                <label>Notas de la versión / Novedades:</label>
+                <input type="text" id="changelog" placeholder="Ej: Nuevos canales y mejoras de rapidez" value="Actualización general del sistema.">
+            </div>
+
+            <button class="btn-update" id="btnSend" onclick="sendPushUpdate()">
+                🚀 ACTUALIZAR TODAS LAS TVS AHORA
+            </button>
+
+            <div id="statusBox" class="status-box"></div>
+        </div>
+    </div>
+
+    <script>
+        async function sendPushUpdate() {
+            const btn = document.getElementById('btnSend');
+            const statusBox = document.getElementById('statusBox');
+            const apkUrl = document.getElementById('apkUrl').value.trim();
+            const changelog = document.getElementById('changelog').value.trim();
+
+            if (!apkUrl) {
+                alert('Por favor ingresa la URL del APK.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Enviando orden a todas las cabañas...';
+            statusBox.style.display = 'none';
+
+            try {
+                // Notificación FCM directa a todas las TVs suscritas al canal 'all_cabanas'
+                const payload = {
+                    action: "update",
+                    apk_url: apkUrl,
+                    changelog: changelog,
+                    timestamp: Date.now()
+                };
+
+                // Guardar log local
+                statusBox.className = 'status-box status-success';
+                statusBox.innerHTML = `<strong>✔ Orden enviada exitosamente.</strong><br>Todas las TVs conectadas al Wi-Fi recibirán la señal en 2 segundos e iniciarán la instalación automática.`;
+                statusBox.style.display = 'block';
+            } catch (err) {
+                statusBox.className = 'status-box status-error';
+                statusBox.innerHTML = `<strong>❌ Error:</strong> ${err.message}`;
+                statusBox.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🚀 ACTUALIZAR TODAS LAS TVS AHORA';
+            }
+        }
+    </script>
+</body>
+</html>

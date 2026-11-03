@@ -1,0 +1,38 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Cabaña Alpina Minimalista de Lujo (Alojamiento / Mi Estancia) -->
+    <!-- Techo a dos aguas con chimenea -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M18,7V4h-2v1.5" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M2.5,10.5L12,3l9.5,7.5" />
+    <!-- Paredes y base de la cabaña -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M5,9.5V20c0,0.6 0.4,1 1,1h12c0.6,0 1,-0.4 1,-1V9.5" />
+    <!-- Puerta estilizada central -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M10,21v-6c0,-0.6 0.4,-1 1,-1h2c0.6,0 1,0.4 1,1v6" />
+</vector>

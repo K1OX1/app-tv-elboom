@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "215320778466",
+    "project_id": "elboomtv-62477",
+    "storage_bucket": "elboomtv-62477.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:215320778466:android:5e82aa16f0426ef2bbf0bb",
+        "android_client_info": {
+          "package_name": "cl.elboomlicanray.tvlauncher"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDPwkvDWsK9xU5Ux4mweYOvjiTG-8DlOXQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
