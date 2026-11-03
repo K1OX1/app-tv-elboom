@@ -1,8 +1,8 @@
 {
   "versionCode": 28,
   "versionName": "1.0.27",
-  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
-  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
-  "changelog": "Versión 1.0.27: Rediseño visual Apple TV tvOS con animaciones Spring Physics, 3D Tilt Parallax, bisel de cristal esmerilado, halo de luz 360 y fondo cinemático continuo.",
-  "sha256": "922FBEC55EC7027EA61C0D8F0C5E79EABA7D0B3624ED5A3BB332B5AE296A931F"
+  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.27/app-release.apk",
+  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.27/app-release.apk",
+  "changelog": "Versión 1.0.27: Rediseño completo de la sección Mi Alojamiento con estilo cinematográfico panorámico, franja horizontal inferior navegable con D-Pad, foco turquesa e integración multiidioma.",
+  "sha256": "9B0F58DD27A7678C14E986023CB3D31D3EF4D61AAFF6D8FF63C8BDB0D0A0EA25"
 }

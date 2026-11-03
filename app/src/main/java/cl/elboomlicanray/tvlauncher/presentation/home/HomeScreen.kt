@@ -363,6 +363,7 @@ fun HomeScreen(
                 stay = uiState.guestStay,
                 dynamicCabin = uiState.currentCabinDetails,
                 propertyInfo = uiState.propertyInfo,
+                selectedLanguage = currentLanguage,
                 onDismiss = { activeModal = "none" }
             )
             "weather" -> WeatherWeeklyForecastDialog(

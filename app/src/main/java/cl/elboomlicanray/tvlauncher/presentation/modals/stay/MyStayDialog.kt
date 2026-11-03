@@ -10,6 +10,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -23,12 +24,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -72,26 +75,31 @@ import cl.elboomlicanray.tvlauncher.domain.model.DynamicCabinDetails
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicPropertyInfo
 import cl.elboomlicanray.tvlauncher.domain.model.GuestStayInfo
 import cl.elboomlicanray.tvlauncher.presentation.components.qr.QrCodeView
-import cl.elboomlicanray.tvlauncher.presentation.theme.TvTokens
+import cl.elboomlicanray.tvlauncher.presentation.i18n.AppStringsCatalog
 
 /**
- * Diálogo Modal: "Mi Alojamiento" para Smart TV (Alojamiento Boutique El Boom).
+ * Modelo de categoría para el dock inferior de "Mi Alojamiento".
+ */
+private data class StayCategoryTab(
+    val id: String,
+    val title: String,
+    val icon: @Composable (Color) -> Unit
+)
+
+/**
+ * Diálogo Modal Rediseñado: "Mi Alojamiento" para Smart TV (Alojamiento Boutique El Boom).
  *
- * Reproduce fielmente la composición visual del diseño de referencia:
- * - Fondo panorámico cálido y cinematográfico del interior/terraza de la cabaña con degradados sutiles.
- * - Cabecera superior con título dinámico de la cabaña, subtítulo descriptivo, pestañas de filtro
- *   (Reserva, Fotos, Camas, Video Tour) con estilo boutique e indicador turquesa, y botón Cerrar.
- * - Grid de 3 columnas principales:
- *   1. "Tu alojamiento": Foto 16:9, tipo de cabaña, capacidad, m², baños y horarios oficiales de check-in / check-out.
- *   2. "Comodidades": Badges circulares con Estacionamiento techado, Horario de silencio y Calefacción a leña / Tinaja.
- *   3. "Conéctate": Código QR de alta visibilidad para Wi-Fi Starlink (Red y Clave) y contacto directo de Recepción WhatsApp.
- * - Franja inferior de 3 tarjetas interactivas de ancho completo:
- *   - "Fotos · {cantidad}" (abre galería HD adaptativa)
- *   - "Camas" (abre distribución detallada de dormitorios)
- *   - "Video Tour" (reproduce recorrido cinematográfico en TV o móvil)
- *
- * Todos los textos y métricas se alimentan dinámicamente de los datos reales del CMS web (elboom.cl)
- * y Channel Manager Nobeds (nombre de huésped, fechas de estadía, montos, estacionamiento, etc.).
+ * Arquitectura visual:
+ * - Fotografía panorámica a pantalla completa con crossfade suave y degradado azul marino oscuro para contraste.
+ * - Información integrada a la izquierda sobre el paisaje, limpia y sin paneles opacos pesados.
+ * - Cabecera superior con título de la cabaña, subtítulo con datos de huésped/fechas y botón Cerrar.
+ * - Franja horizontal inferior navegable con el D-Pad del control remoto, con borde turquesa de foco (#00E5FF).
+ * - 5 categorías esenciales:
+ *   1. Detalles (Capacidad, m², baños, check-in, check-out y saldo)
+ *   2. Wi-Fi & Recepción (QR Starlink grande, red, clave y WhatsApp)
+ *   3. Comodidades (Estacionamiento techado/patente, tinaja y leña Bosca)
+ *   4. Camas (Distribución de dormitorios y ropa de cama)
+ *   5. Fotos & Tour (Galería HD navegable y acceso a Video Tour a pantalla completa)
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -100,9 +108,12 @@ fun MyStayDialog(
     stay: GuestStayInfo,
     dynamicCabin: DynamicCabinDetails? = null,
     propertyInfo: DynamicPropertyInfo = DynamicPropertyInfo(),
+    selectedLanguage: String = "ES",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val strings = remember(selectedLanguage) { AppStringsCatalog.get(selectedLanguage) }
+
     var isVisible by remember { mutableStateOf(false) }
 
     // Lista de fotos completas de la cabaña desde el CMS web
@@ -122,34 +133,33 @@ fun MyStayDialog(
         }
     }
 
-    // Lista de fotos fotográficas reales y limpias de la cabaña
     val realPhotoImages = remember(allImages) {
         val clean = allImages.filter { !isMarketingCollage(it) }
         if (clean.isNotEmpty()) clean else allImages
     }
 
     var selectedImageIndex by remember { mutableIntStateOf(0) }
+    var isPlayingVideoOverlay by remember { mutableStateOf(false) }
 
-    val photoTabLabel = remember(allImages) { "Fotos (${allImages.size.coerceAtLeast(1)})" }
-    val tabs = remember(photoTabLabel) {
+    val categories = remember(strings, allImages.size) {
         listOf(
-            "Reserva",
-            photoTabLabel,
-            "Camas",
-            "Video Tour"
+            StayCategoryTab("detalles", "Detalles") { col -> HomeCanvasIcon(color = col, modifier = Modifier.size(16.dp)) },
+            StayCategoryTab("wifi", "Wi-Fi & Contacto") { col -> WifiCanvasIcon(color = col, modifier = Modifier.size(16.dp)) },
+            StayCategoryTab("comodidades", "Comodidades") { col -> FlameCanvasIcon(color = col, modifier = Modifier.size(16.dp)) },
+            StayCategoryTab("camas", "Camas") { col -> BedCanvasIcon(color = col, modifier = Modifier.size(16.dp)) },
+            StayCategoryTab("fotos", "Fotos & Tour (${allImages.size.coerceAtLeast(1)})") { col -> PhotoCanvasIcon(color = col, modifier = Modifier.size(16.dp)) }
         )
     }
 
-    var selectedTab by remember { mutableStateOf("Reserva") }
-    var isPlayingVideoOverlay by remember { mutableStateOf(false) }
+    var selectedCategoryIndex by remember { mutableIntStateOf(0) }
 
     val closeFocusRequester = remember { FocusRequester() }
-    val initialTabFocusRequester = remember { FocusRequester() }
+    val categoryFocusRequesters = remember { List(categories.size) { FocusRequester() } }
 
     LaunchedEffect(Unit) {
         isVisible = true
         try {
-            initialTabFocusRequester.requestFocus()
+            categoryFocusRequesters.first().requestFocus()
         } catch (_: Exception) {
             try {
                 closeFocusRequester.requestFocus()
@@ -161,8 +171,6 @@ fun MyStayDialog(
         onDismissRequest = {
             if (isPlayingVideoOverlay) {
                 isPlayingVideoOverlay = false
-            } else if (selectedTab != "Reserva") {
-                selectedTab = "Reserva"
             } else {
                 onDismiss()
             }
@@ -172,12 +180,9 @@ fun MyStayDialog(
             dismissOnBackPress = true
         )
     ) {
-        // Manejo del botón BACK del control remoto
         BackHandler {
             if (isPlayingVideoOverlay) {
                 isPlayingVideoOverlay = false
-            } else if (selectedTab != "Reserva") {
-                selectedTab = "Reserva"
             } else {
                 onDismiss()
             }
@@ -195,21 +200,28 @@ fun MyStayDialog(
                     .background(Color(0xFF030712))
             ) {
                 // =========================================================================
-                // 1. FOTOGRAFÍA PANORÁMICA DE FONDO (ATMÓSFERA CINEMATOGRÁFICA A PANTALLA COMPLETA)
+                // 1. FOTOGRAFÍA PANORÁMICA DE FONDO SEGÚN CATEGORÍA SELECCIONADA
                 // =========================================================================
-                if (selectedTab == "Reserva") {
-                    Image(
-                        painter = painterResource(id = R.drawable.bg_stay_cinematic),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    val heroBackground = realPhotoImages.getOrNull(selectedImageIndex)
-                        ?: realPhotoImages.firstOrNull() ?: propertyInfo.heroBgImage
+                val activeBgModel: Any = remember(selectedCategoryIndex, realPhotoImages, selectedImageIndex) {
+                    when (selectedCategoryIndex) {
+                        0 -> realPhotoImages.firstOrNull { it.contains("1Xbjwgzh") || it.contains("5.jpg") }
+                            ?: realPhotoImages.firstOrNull() ?: R.drawable.bg_stay_cinematic
+                        1 -> R.drawable.bg_licanray_sunset
+                        2 -> R.drawable.bg_info_tinajas
+                        3 -> realPhotoImages.firstOrNull { it.contains("14xv4LvW") || it.contains("12.jpg") || it.contains("13.jpg") }
+                            ?: realPhotoImages.getOrNull(1) ?: R.drawable.bg_stay_cinematic
+                        4 -> realPhotoImages.getOrNull(selectedImageIndex) ?: realPhotoImages.firstOrNull() ?: R.drawable.bg_stay_cinematic
+                        else -> R.drawable.bg_stay_cinematic
+                    }
+                }
+
+                Crossfade(
+                    targetState = activeBgModel,
+                    animationSpec = tween(durationMillis = 260),
+                    label = "StayBackgroundCrossfade"
+                ) { bgModel ->
                     AsyncImage(
-                        model = heroBackground,
+                        model = bgModel,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         alignment = Alignment.Center,
@@ -217,44 +229,77 @@ fun MyStayDialog(
                     )
                 }
 
-                // Scrim oscuro cálido para máxima legibilidad sin apagar la calidez del paisaje
+                // =========================================================================
+                // 2. DEGRADADOS OSCUROS DE CONTRASTE Y LEGIBILIDAD
+                // =========================================================================
+                // Scrim lateral izquierdo para bloque de textos y datos
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
+                            Brush.horizontalGradient(
+                                0.00f to Color(0xF4030712),
+                                0.38f to Color(0xDD030712),
+                                0.60f to Color(0x77030712),
+                                0.88f to Color.Transparent
+                            )
+                        )
+                )
+
+                // Scrim superior para cabecera y botón cerrar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
                             Brush.verticalGradient(
-                                0.00f to Color(0xB8050B14),
-                                0.45f to Color(0xCC07101E),
-                                1.00f to Color(0xEA040810)
+                                0.0f to Color(0xCC000000),
+                                0.6f to Color(0x66000000),
+                                1.0f to Color.Transparent
+                            )
+                        )
+                )
+
+                // Scrim inferior para la franja horizontal de categorías
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to Color.Transparent,
+                                0.40f to Color(0x88030712),
+                                1.0f to Color(0xFA030712)
                             )
                         )
                 )
 
                 // =========================================================================
-                // 2. CAPA PRINCIPAL DE INTERFAZ DE USUARIO (10-FOOT UI PARA TV)
+                // 3. CAPA DE INTERFAZ PRINCIPAL (10-FOOT UI PARA ANDROID TV)
                 // =========================================================================
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 48.dp, vertical = 22.dp)
+                        .padding(horizontal = 46.dp, vertical = 22.dp)
                 ) {
                     // ---------------------------------------------------------------------
-                    // BARRA SUPERIOR: NOMBRE DE CABAÑA, PESTAÑAS Y CERRAR
+                    // BARRA SUPERIOR: NOMBRE DE CABAÑA, SUBTÍTULO Y BOTÓN CERRAR
                     // ---------------------------------------------------------------------
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp),
+                            .padding(bottom = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Título y Subtítulo dinámico
                         Column {
                             val cabinTitle = dynamicCabin?.name?.ifBlank { unit.name } ?: unit.name
                             Text(
                                 text = cabinTitle,
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Black,
+                                fontSize = 23.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Spacer(modifier = Modifier.height(2.dp))
@@ -269,689 +314,82 @@ fun MyStayDialog(
                             Text(
                                 text = subtitleText,
                                 fontSize = 12.sp,
-                                color = Color(0xFFBAC4D0)
+                                color = Color.White.copy(alpha = 0.70f)
                             )
                         }
 
-                        // Pestañas de Navegación Superiores (Estilo Boutique)
+                        // Botón Cerrar (Píldora con borde fino)
+                        val closeInteraction = remember { MutableInteractionSource() }
+                        val closeFocused by closeInteraction.collectIsFocusedAsState()
+
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            tabs.forEachIndexed { index, tabName ->
-                                val isSelected = tabName == selectedTab ||
-                                        (tabName.startsWith("Fotos") && selectedTab.startsWith("Fotos"))
-                                val interactionSource = remember { MutableInteractionSource() }
-                                val isFocused by interactionSource.collectIsFocusedAsState()
-
-                                val tabModifier = if (index == 0) {
-                                    Modifier.focusRequester(initialTabFocusRequester)
-                                } else {
-                                    Modifier
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .focusRequester(closeFocusRequester)
+                                .graphicsLayer {
+                                    val scale = if (closeFocused) 1.06f else 1.0f
+                                    scaleX = scale
+                                    scaleY = scale
                                 }
-
-                                Box(
-                                    modifier = tabModifier
-                                        .graphicsLayer {
-                                            val scale = if (isFocused) 1.06f else 1.0f
-                                            scaleX = scale
-                                            scaleY = scale
-                                        }
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(
-                                            when {
-                                                isFocused -> Color(0xFF00E5FF).copy(alpha = 0.22f)
-                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.16f)
-                                                else -> Color.White.copy(alpha = 0.05f)
-                                            }
-                                        )
-                                        .border(
-                                            width = if (isFocused || isSelected) 1.5.dp else 1.dp,
-                                            color = when {
-                                                isFocused -> Color(0xFF00E5FF)
-                                                isSelected -> Color(0xFF00E5FF)
-                                                else -> Color.White.copy(alpha = 0.14f)
-                                            },
-                                            shape = RoundedCornerShape(20.dp)
-                                        )
-                                        .clickable(
-                                            interactionSource = interactionSource,
-                                            indication = null
-                                        ) {
-                                            selectedTab = tabName
-                                        }
-                                        .focusable(interactionSource = interactionSource)
-                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (closeFocused) Color(0xFF00E5FF).copy(alpha = 0.20f)
+                                    else Color.White.copy(alpha = 0.05f)
+                                )
+                                .border(
+                                    width = if (closeFocused) 1.5.dp else 1.dp,
+                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .clickable(
+                                    interactionSource = closeInteraction,
+                                    indication = null
                                 ) {
-                                    Text(
-                                        text = tabName,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
-                                        color = when {
-                                            isFocused -> Color(0xFF00E5FF)
-                                            isSelected -> Color(0xFF00E5FF)
-                                            else -> Color.White.copy(alpha = 0.85f)
-                                        }
-                                    )
+                                    onDismiss()
                                 }
-                            }
-
-                            // Botón Cerrar (Píldora con borde fino)
-                            val closeInteraction = remember { MutableInteractionSource() }
-                            val closeFocused by closeInteraction.collectIsFocusedAsState()
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier
-                                    .focusRequester(closeFocusRequester)
-                                    .graphicsLayer {
-                                        val scale = if (closeFocused) 1.06f else 1.0f
-                                        scaleX = scale
-                                        scaleY = scale
-                                    }
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(
-                                        if (closeFocused) Color(0xFF00E5FF).copy(alpha = 0.20f)
-                                        else Color.White.copy(alpha = 0.05f)
-                                    )
-                                    .border(
-                                        width = if (closeFocused) 1.5.dp else 1.dp,
-                                        color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                                    .clickable(
-                                        interactionSource = closeInteraction,
-                                        indication = null
-                                    ) {
-                                        onDismiss()
-                                    }
-                                    .focusable(interactionSource = closeInteraction)
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                CloseCanvasIcon(
-                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = "Cerrar",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (closeFocused) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White
-                                )
-                            }
+                                .focusable(interactionSource = closeInteraction)
+                                .padding(horizontal = 14.dp, vertical = 7.dp)
+                        ) {
+                            CloseCanvasIcon(
+                                color = if (closeFocused) Color(0xFF00E5FF) else Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = strings.close,
+                                fontSize = 12.sp,
+                                fontWeight = if (closeFocused) FontWeight.Bold else FontWeight.Normal,
+                                color = if (closeFocused) Color(0xFF00E5FF) else Color.White
+                            )
                         }
                     }
 
                     // ---------------------------------------------------------------------
-                    // CUERPO CENTRAL DE LA PANTALLA
+                    // CONTENIDO DINÁMICO SEGÚN LA CATEGORÍA ACTIVA (LADO IZQUIERDO)
                     // ---------------------------------------------------------------------
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
+                            .padding(top = 8.dp, bottom = 6.dp)
                     ) {
-                        when {
-                            selectedTab == "Reserva" -> {
-                                // VISTA PRINCIPAL: 3 COLUMNAS EXACTAS SEGÚN MAQUETA
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    // =====================================================
-                                    // COLUMNA 1: "Tu alojamiento"
-                                    // =====================================================
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color(0xCC0D1522))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                            .padding(16.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            // Encabezado con ícono casa turquesa
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                HomeCanvasIcon(
-                                                    color = Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "Tu alojamiento",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF00E5FF)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(10.dp))
-
-                                            // Miniatura 16:9 con foto fotográfica real de la cabaña
-                                            val cabinThumb = realPhotoImages.firstOrNull { it.contains("1Xbjwgzh") || it.contains("5.jpg") }
-                                                ?: realPhotoImages.firstOrNull() ?: propertyInfo.heroBgImage
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(115.dp)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .background(Color(0xFF0B111A))
-                                            ) {
-                                                AsyncImage(
-                                                    model = cabinThumb,
-                                                    contentDescription = "Cabaña",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(10.dp))
-
-                                            // Nombre / Tipo de Cabaña
-                                            val cabinType = dynamicCabin?.type?.ifBlank { unit.type } ?: unit.type
-                                            Text(
-                                                text = cabinType,
-                                                fontSize = 17.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-
-                                            Spacer(modifier = Modifier.height(6.dp))
-
-                                            // Fila de Capacidad, Metros cuadrados y Baños con íconos
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                val capacity = dynamicCabin?.capacity ?: unit.capacity
-                                                val area = dynamicCabin?.area ?: unit.area
-                                                val bathrooms = dynamicCabin?.bathrooms ?: unit.bathrooms
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    PersonCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        text = "$capacity personas",
-                                                        fontSize = 11.5.sp,
-                                                        color = Color.White.copy(alpha = 0.85f)
-                                                    )
-                                                }
-
-                                                Text(text = "·", color = Color.White.copy(alpha = 0.35f))
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    RulerCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        text = "$area m²",
-                                                        fontSize = 11.5.sp,
-                                                        color = Color.White.copy(alpha = 0.85f)
-                                                    )
-                                                }
-
-                                                Text(text = "·", color = Color.White.copy(alpha = 0.35f))
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    ShowerCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        text = "$bathrooms baño${if (bathrooms > 1) "s" else ""}",
-                                                        fontSize = 11.5.sp,
-                                                        color = Color.White.copy(alpha = 0.85f)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Fila compacta de Check-in y Check-out
-                                        Column {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(1.dp)
-                                                    .background(Color.White.copy(alpha = 0.08f))
-                                            )
-                                            Spacer(modifier = Modifier.height(10.dp))
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                // Check-in
-                                                Row(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalAlignment = Alignment.Top,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    ClockCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(15.dp)
-                                                    )
-                                                    Column {
-                                                        Text(
-                                                            text = if (stay.isOccupied) "CHECK-IN" else "HORARIO CHECK-IN",
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            letterSpacing = 0.6.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1
-                                                        )
-                                                        val checkinVal = if (stay.isOccupied && stay.checkinDate.isNotBlank()) {
-                                                            stay.checkinDate
-                                                        } else {
-                                                            propertyInfo.checkIn.ifBlank { "15:00 a 22:00 hrs" }
-                                                        }
-                                                        Text(
-                                                            text = checkinVal,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            maxLines = 1
-                                                        )
-                                                        Text(
-                                                            text = if (stay.isOccupied) "Recepción ${stay.checkinOfficialTime}" else "Recepción y entrega de llaves",
-                                                            fontSize = 8.5.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                }
-
-                                                Spacer(modifier = Modifier.width(6.dp))
-
-                                                // Check-out
-                                                Row(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalAlignment = Alignment.Top,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    ClockCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(15.dp)
-                                                    )
-                                                    Column {
-                                                        Text(
-                                                            text = if (stay.isOccupied) "CHECK-OUT" else "HORARIO CHECK-OUT",
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            letterSpacing = 0.6.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1
-                                                        )
-                                                        val checkoutVal = if (stay.isOccupied && stay.checkoutDate.isNotBlank()) {
-                                                            stay.checkoutDate
-                                                        } else {
-                                                            propertyInfo.checkOut.ifBlank { "09:00 a 11:00 hrs" }
-                                                        }
-                                                        Text(
-                                                            text = checkoutVal,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            maxLines = 1
-                                                        )
-                                                        Text(
-                                                            text = if (stay.isOccupied) "Salida ${stay.checkoutOfficialTime}" else "Salida y entrega de llaves",
-                                                            fontSize = 8.5.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // =====================================================
-                                    // COLUMNA 2: "Comodidades"
-                                    // =====================================================
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color(0xCC0D1522))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                            .padding(18.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            // Encabezado con ícono engranaje/estrella dorada
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                GearCanvasIcon(
-                                                    color = Color(0xFFFBBF24),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "Comodidades",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFFBBF24)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(18.dp))
-
-                                            // Fila 1: Estacionamiento techado
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1E2836)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    CarCanvasIcon(
-                                                        color = Color.White,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    Text(
-                                                        text = "Estacionamiento techado",
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    val parkingSub = if (stay.isOccupied && stay.vehiclePlate.isNotBlank() && stay.vehiclePlate != "Estacionamiento Asignado") {
-                                                        "Patente registrada: ${stay.vehiclePlate}"
-                                                    } else {
-                                                        "Dentro del recinto privado techado"
-                                                    }
-                                                    Text(
-                                                        text = parkingSub,
-                                                        fontSize = 10.5.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(18.dp))
-
-                                            // Fila 2: Horario de silencio
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1E2836)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    MoonCanvasIcon(
-                                                        color = Color.White,
-                                                        modifier = Modifier.size(17.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    Text(
-                                                        text = "Horario de silencio",
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    Text(
-                                                        text = "23:00 a 11:00 hrs",
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    Text(
-                                                        text = "Prohibida música fuerte para permitir el descanso",
-                                                        fontSize = 10.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(18.dp))
-
-                                            // Fila 3: Calefacción a leña / Tinaja
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1E2836)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    FlameCanvasIcon(
-                                                        color = Color.White,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    val flameTitle = if (unit.hasTinaja) "Tinaja y Calefacción a leña" else "Calefacción a leña"
-                                                    Text(
-                                                        text = flameTitle,
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    val flameSub = if (unit.hasTinaja) "Tinaja de madera nativa y estufa Bosca" else "A leña entregada por recepción"
-                                                    Text(
-                                                        text = flameSub,
-                                                        fontSize = 10.5.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                    Text(
-                                                        text = "La leña tiene costo adicional",
-                                                        fontSize = 9.5.sp,
-                                                        color = Color(0xFF64748B)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Estado de cuenta / saldo si está ocupada
-                                        if (stay.isOccupied) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(
-                                                        if (stay.isPaid) Color(0xFF10B981).copy(alpha = 0.15f)
-                                                        else Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                                    )
-                                                    .border(
-                                                        1.dp,
-                                                        if (stay.isPaid) Color(0xFF10B981) else Color(0xFFF59E0B),
-                                                        RoundedCornerShape(8.dp)
-                                                    )
-                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = if (stay.isPaid) "ESTADO: PAGADO AL DÍA" else "SALDO PENDIENTE",
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (stay.isPaid) Color(0xFF34D399) else Color(0xFFFBBF24)
-                                                    )
-                                                    Text(
-                                                        text = if (stay.isPaid) "$0 CLP" else "$${stay.balance.formatNumber()} CLP",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Black,
-                                                        color = Color.White
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // =====================================================
-                                    // COLUMNA 3: "Conéctate" (Wi-Fi Starlink + WhatsApp Recepción)
-                                    // =====================================================
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color(0xCC0D1522))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                            .padding(18.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            // Encabezado con ícono Wi-Fi turquesa
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                WifiCanvasIcon(
-                                                    color = Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "Conéctate",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF00E5FF)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(14.dp))
-
-                                            // Tarjeta blanca con QR de Wi-Fi Starlink de alta visibilidad
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(108.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(Color.White)
-                                                    .padding(6.dp)
-                                            ) {
-                                                QrCodeView(
-                                                    content = "WIFI:T:WPA;S:${stay.wifiNetwork};P:${stay.wifiPassword};;",
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(10.dp))
-
-                                            Text(
-                                                text = "Red: ${stay.wifiNetwork}",
-                                                fontSize = 13.5.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color.White
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Clave: ${stay.wifiPassword}",
-                                                fontSize = 14.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF00E5FF)
-                                            )
-                                        }
-
-                                        // Contacto Recepción WhatsApp
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(1.dp)
-                                                    .background(Color.White.copy(alpha = 0.08f))
-                                            )
-                                            Spacer(modifier = Modifier.height(10.dp))
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                WhatsAppCanvasIcon(
-                                                    color = Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                                Column {
-                                                    Text(
-                                                        text = "CONTACTO RECEPCIÓN",
-                                                        fontSize = 8.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        letterSpacing = 0.6.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                    Text(
-                                                        text = stay.hostWhatsappFormatted.ifBlank { "+56 9 7269 4597" },
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    Text(
-                                                        text = "WhatsApp disponible 24/7",
-                                                        fontSize = 9.5.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            selectedTab.startsWith("Fotos") -> {
-                                // VISOR HD DE FOTOS
-                                FullPhotoGalleryView(
-                                    images = allImages,
+                        Crossfade(
+                            targetState = selectedCategoryIndex,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "StayCategoryCrossfade"
+                        ) { catIndex ->
+                            when (catIndex) {
+                                0 -> StayDetailsSection(unit, stay, dynamicCabin, propertyInfo)
+                                1 -> StayWifiSection(stay)
+                                2 -> StayAmenitiesSection(unit, stay, dynamicCabin)
+                                3 -> StayBedsSection(unit, dynamicCabin)
+                                4 -> StayPhotosAndTourSection(
+                                    images = realPhotoImages,
                                     selectedIndex = selectedImageIndex,
                                     cabinName = dynamicCabin?.name ?: unit.name,
-                                    onSelectIndex = { selectedImageIndex = it },
-                                    onBack = { selectedTab = "Reserva" }
-                                )
-                            }
-
-                            selectedTab == "Camas" -> {
-                                // DISTRIBUCIÓN DE DORMITORIOS Y CAMAS
-                                BedroomDistributionView(
-                                    dynamicCabin = dynamicCabin,
-                                    unit = unit
-                                )
-                            }
-
-                            selectedTab == "Video Tour" -> {
-                                // REPRODUCTOR Y DETALLE DE VIDEO TOUR
-                                VideoTourPanelView(
                                     dynamicCabin = dynamicCabin,
                                     unit = unit,
+                                    onSelectIndex = { selectedImageIndex = it },
                                     onPlayFullscreen = { isPlayingVideoOverlay = true }
                                 )
                             }
@@ -959,85 +397,141 @@ fun MyStayDialog(
                     }
 
                     // ---------------------------------------------------------------------
-                    // FRANJA INFERIOR: 3 TARJETAS INTERACTIVAS (FOTOS, CAMAS, VIDEO TOUR)
+                    // FRANJA HORIZONTAL INFERIOR DE CATEGORÍAS (RECORRIBLE CON CONTROL REMOTO)
                     // ---------------------------------------------------------------------
-                    Spacer(modifier = Modifier.height(14.dp))
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(96.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.Bottom
                     ) {
-                        // TARJETA 1: Fotos · {cantidad}
-                        val photoInteraction = remember { MutableInteractionSource() }
-                        val photoFocused by photoInteraction.collectIsFocusedAsState()
-                        val isPhotoActive = selectedTab.startsWith("Fotos")
+                        categories.forEachIndexed { index, category ->
+                            val isSelected = index == selectedCategoryIndex
+                            val itemInteraction = remember { MutableInteractionSource() }
+                            val isFocused by itemInteraction.collectIsFocusedAsState()
 
-                        val photoThumb = remember(realPhotoImages) {
-                            realPhotoImages.firstOrNull { it.contains("1Xbjwgzh") || it.contains("5.jpg") }
-                                ?: realPhotoImages.firstOrNull() ?: propertyInfo.heroBgImage
+                            LaunchedEffect(isFocused) {
+                                if (isFocused) {
+                                    selectedCategoryIndex = index
+                                }
+                            }
+
+                            val tabThumbUrl = remember(index, realPhotoImages) {
+                                when (index) {
+                                    0 -> realPhotoImages.firstOrNull { it.contains("1Xbjwgzh") || it.contains("5.jpg") } ?: realPhotoImages.firstOrNull() ?: ""
+                                    1 -> "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=400&q=80"
+                                    2 -> "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=400&q=80"
+                                    3 -> realPhotoImages.firstOrNull { it.contains("14xv4LvW") || it.contains("12.jpg") || it.contains("13.jpg") } ?: realPhotoImages.getOrNull(1) ?: ""
+                                    4 -> realPhotoImages.firstOrNull { it.contains("mDPx9WSB") || it.contains("17.jpg") } ?: realPhotoImages.getOrNull(2) ?: ""
+                                    else -> ""
+                                }
+                            }
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .width(148.dp)
+                                    .graphicsLayer {
+                                        val scale = if (isFocused) 1.05f else 1.0f
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                    .clickable(
+                                        interactionSource = itemInteraction,
+                                        indication = null
+                                    ) {
+                                        selectedCategoryIndex = index
+                                    }
+                                    .focusRequester(categoryFocusRequesters[index])
+                                    .focusable(interactionSource = itemInteraction)
+                            ) {
+                                // Miniatura con foco turquesa nítido
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(72.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF0F172A))
+                                        .border(
+                                            width = when {
+                                                isFocused -> 2.2.dp
+                                                isSelected -> 1.5.dp
+                                                else -> 0.8.dp
+                                            },
+                                            color = when {
+                                                isFocused -> Color(0xFF00E5FF)
+                                                isSelected -> Color(0xFF00E5FF)
+                                                else -> Color.White.copy(alpha = 0.20f)
+                                            },
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                ) {
+                                    if (tabThumbUrl.isNotBlank()) {
+                                        AsyncImage(
+                                            model = tabThumbUrl,
+                                            contentDescription = category.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.bg_stay_cinematic),
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+
+                                    // Degradado para que el ícono resalte
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    0.0f to Color.Black.copy(alpha = 0.25f),
+                                                    1.0f to Color.Black.copy(alpha = 0.70f)
+                                                )
+                                            )
+                                    )
+
+                                    // Ícono representativo en la esquina inferior derecha
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(6.dp)
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isFocused || isSelected) Color(0xFF00E5FF) else Color.Black.copy(alpha = 0.65f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        category.icon(if (isFocused || isSelected) Color.Black else Color.White)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Título de la categoría
+                                Text(
+                                    text = category.title,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
+                                    color = when {
+                                        isFocused -> Color(0xFF00E5FF)
+                                        isSelected -> Color.White
+                                        else -> Color.White.copy(alpha = 0.65f)
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
-
-                        InteractiveActionCard(
-                            title = "Fotos · ${allImages.size.coerceAtLeast(1)}",
-                            imageUrl = photoThumb,
-                            icon = { PhotoCanvasIcon(color = Color.White, modifier = Modifier.size(16.dp)) },
-                            isFocused = photoFocused,
-                            isActive = isPhotoActive,
-                            interactionSource = photoInteraction,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedTab = photoTabLabel }
-                        )
-
-                        // TARJETA 2: Camas
-                        val bedInteraction = remember { MutableInteractionSource() }
-                        val bedFocused by bedInteraction.collectIsFocusedAsState()
-                        val isBedActive = selectedTab == "Camas"
-
-                        val bedThumb = remember(realPhotoImages) {
-                            realPhotoImages.firstOrNull { it.contains("14xv4LvW") || it.contains("12.jpg") || it.contains("13.jpg") }
-                                ?: realPhotoImages.getOrNull(1) ?: photoThumb
-                        }
-
-                        InteractiveActionCard(
-                            title = "Camas",
-                            imageUrl = bedThumb,
-                            icon = { BedCanvasIcon(color = Color.White, modifier = Modifier.size(17.dp)) },
-                            isFocused = bedFocused,
-                            isActive = isBedActive,
-                            interactionSource = bedInteraction,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedTab = "Camas" }
-                        )
-
-                        // TARJETA 3: Video Tour
-                        val videoInteraction = remember { MutableInteractionSource() }
-                        val videoFocused by videoInteraction.collectIsFocusedAsState()
-                        val isVideoActive = selectedTab == "Video Tour"
-
-                        val videoThumb = remember(realPhotoImages) {
-                            realPhotoImages.firstOrNull { it.contains("mDPx9WSB") || it.contains("17.jpg") || it.contains("3wJQKv4Z") }
-                                ?: realPhotoImages.getOrNull(2) ?: photoThumb
-                        }
-
-                        InteractiveActionCard(
-                            title = "Video Tour",
-                            imageUrl = videoThumb,
-                            icon = { VideoCameraCanvasIcon(color = Color.White, modifier = Modifier.size(16.dp)) },
-                            showPlayOverlay = true,
-                            isFocused = videoFocused,
-                            isActive = isVideoActive,
-                            interactionSource = videoInteraction,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedTab = "Video Tour" }
-                        )
                     }
                 }
 
                 // =========================================================================
-                // 3. OVERLAY DE VIDEO A PANTALLA COMPLETA
+                // 4. OVERLAY DE VIDEO A PANTALLA COMPLETA
                 // =========================================================================
                 if (isPlayingVideoOverlay) {
                     val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
@@ -1053,410 +547,702 @@ fun MyStayDialog(
     }
 }
 
-/**
- * Tarjeta interactiva de la franja inferior (Fotos, Camas, Video Tour).
- */
+// =============================================================================
+// SECCIÓN 1: DETALLES DE ALOJAMIENTO Y RESERVA
+// =============================================================================
 @Composable
-private fun InteractiveActionCard(
-    title: String,
-    imageUrl: String,
-    icon: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    showPlayOverlay: Boolean = false,
-    isFocused: Boolean = false,
-    isActive: Boolean = false,
-    interactionSource: MutableInteractionSource,
-    onClick: () -> Unit
+private fun StayDetailsSection(
+    unit: AccommodationUnit,
+    stay: GuestStayInfo,
+    dynamicCabin: DynamicCabinDetails?,
+    propertyInfo: DynamicPropertyInfo
 ) {
-    Box(
-        modifier = modifier
+    val capacity = dynamicCabin?.capacity ?: unit.capacity
+    val area = dynamicCabin?.area ?: unit.area
+    val bathrooms = dynamicCabin?.bathrooms ?: unit.bathrooms
+    val cabinType = dynamicCabin?.type?.ifBlank { unit.type } ?: unit.type
+
+    Column(
+        modifier = Modifier
             .fillMaxHeight()
-            .graphicsLayer {
-                val scale = if (isFocused) 1.035f else 1.0f
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF0F172A))
-            .border(
-                width = when {
-                    isFocused -> 2.dp
-                    isActive -> 1.5.dp
-                    else -> 0.8.dp
-                },
-                color = when {
-                    isFocused -> Color(0xFF00E5FF)
-                    isActive -> Color(0xFF00E5FF)
-                    else -> Color.White.copy(alpha = 0.16f)
-                },
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null
-            ) {
-                onClick()
-            }
-            .focusable(interactionSource = interactionSource)
+            .widthIn(max = 680.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Foto de fondo panorámica
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+        Text(
+            text = "Detalles y Registro del Alojamiento",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF00E5FF)
         )
 
-        // Degradado vertical elegante para legibilidad óptima
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.00f to Color.Transparent,
-                        0.45f to Color.Black.copy(alpha = 0.40f),
-                        1.00f to Color.Black.copy(alpha = 0.88f)
-                    )
-                )
-        )
-
-        // Botón Play central si es Video Tour (fiel a la maqueta)
-        if (showPlayOverlay) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(1.6.dp, Color.White, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                PlayCanvasIcon(color = Color.White, modifier = Modifier.size(15.dp))
-            }
-        }
-
-        // Título e Ícono a la izquierda + Flecha a la derecha en la base de la tarjeta
+        // Tarjeta ligera con métricas clave de la cabaña
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                icon()
+            Column {
                 Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isFocused || isActive) Color(0xFF00E5FF) else Color.White
-                )
-            }
-
-            ChevronRightCanvasIcon(
-                color = if (isFocused || isActive) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.75f),
-                modifier = Modifier.size(13.dp)
-            )
-        }
-    }
-}
-
-/**
- * Visor Adaptativo HD de Fotos con galería y miniaturas.
- */
-@Composable
-private fun FullPhotoGalleryView(
-    images: List<String>,
-    selectedIndex: Int,
-    cabinName: String,
-    onSelectIndex: (Int) -> Unit,
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        val currentPhotoUrl = images.getOrNull(selectedIndex) ?: ""
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.Black)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (currentPhotoUrl.isNotBlank()) {
-                AsyncImage(
-                    model = currentPhotoUrl,
-                    contentDescription = "Foto ${selectedIndex + 1}",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(14.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color.Black.copy(alpha = 0.80f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "Foto ${selectedIndex + 1} de ${images.size} · $cabinName",
-                    fontSize = 11.5.sp,
+                    text = cabinType,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Fila de miniaturas navegable con D-Pad
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            itemsIndexed(images) { index, imgUrl ->
-                val isSelected = index == selectedIndex
-                val interactionSource = remember { MutableInteractionSource() }
-                val isFocused by interactionSource.collectIsFocusedAsState()
-
-                LaunchedEffect(isFocused) {
-                    if (isFocused) onSelectIndex(index)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        PersonCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(13.dp))
+                        Text(text = "$capacity personas", fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.85f))
+                    }
+                    Text(text = "·", color = Color.White.copy(alpha = 0.35f))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RulerCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(13.dp))
+                        Text(text = "$area m²", fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.85f))
+                    }
+                    Text(text = "·", color = Color.White.copy(alpha = 0.35f))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ShowerCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(13.dp))
+                        Text(text = "$bathrooms baño${if (bathrooms > 1) "s" else ""}", fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.85f))
+                    }
                 }
+            }
 
+            // Badge de estado de cuenta
+            if (stay.isOccupied) {
                 Box(
                     modifier = Modifier
-                        .size(width = 92.dp, height = 52.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.Black)
-                        .border(
-                            width = if (isSelected || isFocused) 2.dp else 0.8.dp,
-                            color = if (isSelected || isFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null
-                        ) {
-                            onSelectIndex(index)
-                        }
-                        .focusable(interactionSource = interactionSource)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (stay.isPaid) Color(0xFF10B981).copy(alpha = 0.18f) else Color(0xFFF59E0B).copy(alpha = 0.18f))
+                        .border(1.dp, if (stay.isPaid) Color(0xFF10B981) else Color(0xFFF59E0B), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    AsyncImage(
-                        model = imgUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                    Text(
+                        text = if (stay.isPaid) "✓ PAGADO AL DÍA" else "SALDO: $${stay.balance.formatNumber()} CLP",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (stay.isPaid) Color(0xFF34D399) else Color(0xFFFBBF24)
                     )
                 }
             }
         }
+
+        // Horarios oficiales de Check-in y Check-out
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Check-in
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xCC07101E))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClockCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                    Text(
+                        text = if (stay.isOccupied) "CHECK-IN" else "HORARIO CHECK-IN",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                val checkinVal = if (stay.isOccupied && stay.checkinDate.isNotBlank()) stay.checkinDate else propertyInfo.checkIn.ifBlank { "15:00 a 22:00 hrs" }
+                Text(
+                    text = checkinVal,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = if (stay.isOccupied) "Hora oficial: ${stay.checkinOfficialTime}" else "Recepción y entrega de llaves",
+                    fontSize = 10.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+
+            // Check-out
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xCC07101E))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClockCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                    Text(
+                        text = if (stay.isOccupied) "CHECK-OUT" else "HORARIO CHECK-OUT",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                val checkoutVal = if (stay.isOccupied && stay.checkoutDate.isNotBlank()) stay.checkoutDate else propertyInfo.checkOut.ifBlank { "09:00 a 11:00 hrs" }
+                Text(
+                    text = checkoutVal,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = if (stay.isOccupied) "Hora oficial: ${stay.checkoutOfficialTime}" else "Entrega de llaves para aseo",
+                    fontSize = 10.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+        }
+
+        // Descripción de bienvenida de la unidad
+        val cabinDesc = dynamicCabin?.description?.ifEmpty {
+            "Alojamiento privado totalmente equipado en Licán Ray, rodeado de naturaleza nativa, calefacción a leña y máxima comodidad."
+        } ?: ""
+        Text(
+            text = cabinDesc,
+            fontSize = 11.5.sp,
+            color = Color(0xFFCBD5E1),
+            lineHeight = 16.5.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
-/**
- * Vista de Camas y Distribución de Dormitorios.
- */
+// =============================================================================
+// SECCIÓN 2: WI-FI STARLINK & CONTACTO DE RECEPCIÓN
+// =============================================================================
 @Composable
-private fun BedroomDistributionView(
-    dynamicCabin: DynamicCabinDetails?,
-    unit: AccommodationUnit
-) {
+private fun StayWifiSection(stay: GuestStayInfo) {
     Row(
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier
+            .fillMaxHeight()
+            .widthIn(max = 760.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Columna 1: Dormitorios
+        // Tarjeta Wi-Fi con Código QR
         Column(
             modifier = Modifier
                 .weight(1.1f)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC0D1522))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                .padding(18.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "Distribución de Dormitorios",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF00E5FF)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                WifiCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                Text(
+                    text = "Internet Satelital Starlink",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF00E5FF)
+                )
+            }
 
-            val bedrooms = dynamicCabin?.bedrooms ?: emptyList()
-            if (bedrooms.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            Box(
+                modifier = Modifier
+                    .size(118.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .padding(6.dp)
+            ) {
+                QrCodeView(
+                    content = "WIFI:T:WPA;S:${stay.wifiNetwork};P:${stay.wifiPassword};;",
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Escanea el código QR con la cámara de tu celular",
+                    fontSize = 10.sp,
+                    color = Color(0xFF94A3B8),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Red: ${stay.wifiNetwork}",
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Clave: ${stay.wifiPassword}",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF00E5FF)
+                )
+            }
+        }
+
+        // Contacto Recepción WhatsApp
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                .padding(18.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(bedrooms.size) { idx ->
-                        val rm = bedrooms[idx]
-                        Column(
+                    WhatsAppCanvasIcon(color = Color(0xFF34D399), modifier = Modifier.size(20.dp))
+                    Text(
+                        text = "Recepción & Asistencia",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF34D399)
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Estamos a tu disposición para reposición de leña, encendido de tinajas o consultas del entorno.",
+                    fontSize = 11.5.sp,
+                    color = Color(0xFFCBD5E1),
+                    lineHeight = 16.sp
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1E2836).copy(alpha = 0.5f))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "WHATSAPP DE ATENCIÓN",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF94A3B8)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stay.hostWhatsappFormatted.ifBlank { "+56 9 7269 4597" },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Disponible para mensajes las 24 hrs",
+                    fontSize = 9.5.sp,
+                    color = Color(0xFF34D399)
+                )
+            }
+        }
+    }
+}
+
+// =============================================================================
+// SECCIÓN 3: COMODIDADES, ESTACIONAMIENTO Y CALEFACCIÓN
+// =============================================================================
+@Composable
+private fun StayAmenitiesSection(
+    unit: AccommodationUnit,
+    stay: GuestStayInfo,
+    dynamicCabin: DynamicCabinDetails?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .widthIn(max = 700.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Comodidades y Convivencia",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF00E5FF)
+        )
+
+        // Fila 1: Estacionamiento techado
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E2836)),
+                contentAlignment = Alignment.Center
+            ) {
+                CarCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+            }
+            Column {
+                Text(
+                    text = "Estacionamiento techado dentro del recinto",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                val parkingSub = if (stay.isOccupied && stay.vehiclePlate.isNotBlank() && stay.vehiclePlate != "Estacionamiento Asignado") {
+                    "Patente de vehículo registrada: ${stay.vehiclePlate}"
+                } else {
+                    "Recinto privado con portón seguro y acceso controlado"
+                }
+                Text(
+                    text = parkingSub,
+                    fontSize = 11.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+        }
+
+        // Fila 2: Horario de silencio
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E2836)),
+                contentAlignment = Alignment.Center
+            ) {
+                MoonCanvasIcon(color = Color(0xFFFBBF24), modifier = Modifier.size(17.dp))
+            }
+            Column {
+                Text(
+                    text = "Horario de descanso y silencio: 23:00 a 11:00 hrs",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Por favor evita música alta y ruidos molestos para permitir el descanso de todas las familias.",
+                    fontSize = 11.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+        }
+
+        // Fila 3: Calefacción a leña y tinaja
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E2836)),
+                contentAlignment = Alignment.Center
+            ) {
+                FlameCanvasIcon(color = Color(0xFFF97316), modifier = Modifier.size(18.dp))
+            }
+            Column {
+                val flameTitle = if (unit.hasTinaja) "Tinaja de madera nativa y calefacción Bosca a leña" else "Calefacción Bosca a leña"
+                Text(
+                    text = flameTitle,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Usa leña seca, regula el tiraje y mantén la puerta cerrada. La leña adicional tiene costo extra.",
+                    fontSize = 11.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+        }
+    }
+}
+
+// =============================================================================
+// SECCIÓN 4: DISTRIBUCIÓN DE DORMITORIOS Y CAMAS
+// =============================================================================
+@Composable
+private fun StayBedsSection(
+    unit: AccommodationUnit,
+    dynamicCabin: DynamicCabinDetails?
+) {
+    val bedrooms = dynamicCabin?.bedrooms ?: emptyList()
+    val bedsSummary = dynamicCabin?.bedsSummary?.ifEmpty { unit.bedsDescription } ?: unit.bedsDescription
+
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .widthIn(max = 700.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Distribución de Dormitorios y Camas",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF00E5FF)
+        )
+
+        if (bedrooms.isNotEmpty()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(bedrooms.size) { idx ->
+                    val rm = bedrooms[idx]
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xCC07101E))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF1E2836).copy(alpha = 0.7f))
-                                .padding(12.dp)
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1E2836)),
+                            contentAlignment = Alignment.Center
                         ) {
+                            BedCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                        }
+                        Column {
                             Text(
                                 text = rm.name,
-                                fontSize = 13.sp,
+                                fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
-                            Spacer(modifier = Modifier.height(3.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = rm.bedsDescription.ifEmpty { "Camas listas y equipadas" },
+                                text = rm.bedsDescription.ifEmpty { "Camas listas con sábanas y cobertores limpios" },
                                 fontSize = 11.5.sp,
                                 color = Color(0xFF00E5FF)
                             )
                         }
                     }
                 }
-            } else {
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xCC07101E))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                    .padding(18.dp)
+            ) {
                 Text(
-                    text = dynamicCabin?.bedsSummary?.ifEmpty { unit.bedsDescription } ?: unit.bedsDescription,
+                    text = bedsSummary,
                     fontSize = 13.sp,
                     color = Color.White,
                     lineHeight = 18.sp
                 )
             }
         }
+    }
+}
 
-        // Columna 2: Equipamiento y Amenidades
+// =============================================================================
+// SECCIÓN 5: GALERÍA DE FOTOS HD Y ACCESO A VIDEO TOUR
+// =============================================================================
+@Composable
+private fun StayPhotosAndTourSection(
+    images: List<String>,
+    selectedIndex: Int,
+    cabinName: String,
+    dynamicCabin: DynamicCabinDetails?,
+    unit: AccommodationUnit,
+    onSelectIndex: (Int) -> Unit,
+    onPlayFullscreen: () -> Unit
+) {
+    val playInteraction = remember { MutableInteractionSource() }
+    val isPlayFocused by playInteraction.collectIsFocusedAsState()
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(end = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Columna Izquierda: Visor HD y tira de miniaturas
         Column(
             modifier = Modifier
-                .weight(0.9f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC0D1522))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                .padding(18.dp)
+                .weight(1.3f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "Equipamiento Incluido",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFFBBF24)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            val amenities = dynamicCabin?.amenities ?: unit.amenities
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            val currentPhotoUrl = images.getOrNull(selectedIndex) ?: ""
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black)
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
             ) {
-                items(amenities.size) { idx ->
-                    val amen = amenities[idx]
-                    Row(
+                if (currentPhotoUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = currentPhotoUrl,
+                        contentDescription = "Foto $cabinName",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.80f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Foto ${selectedIndex + 1} de ${images.size} · $cabinName",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Miniaturas recorribles con D-Pad
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                itemsIndexed(images) { index, imgUrl ->
+                    val isSelected = index == selectedIndex
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isFocused by interactionSource.collectIsFocusedAsState()
+
+                    LaunchedEffect(isFocused) {
+                        if (isFocused) onSelectIndex(index)
+                    }
+
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .size(width = 86.dp, height = 48.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF1E2836).copy(alpha = 0.5f))
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .background(Color.Black)
+                            .border(
+                                width = if (isSelected || isFocused) 2.dp else 0.8.dp,
+                                color = if (isSelected || isFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = null
+                            ) {
+                                onSelectIndex(index)
+                            }
+                            .focusable(interactionSource = interactionSource)
                     ) {
-                        Text(
-                            text = "✓",
-                            fontSize = 11.sp,
-                            color = Color(0xFF34D399),
-                            fontWeight = FontWeight.Black
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = amen,
-                            fontSize = 12.sp,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                        AsyncImage(
+                            model = imgUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
             }
         }
-    }
-}
 
-/**
- * Vista de Video Tour con opción de reproducir en TV o móvil.
- */
-@Composable
-private fun VideoTourPanelView(
-    dynamicCabin: DynamicCabinDetails?,
-    unit: AccommodationUnit,
-    onPlayFullscreen: () -> Unit
-) {
-    val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
-    val youtubeUrl = "https://www.youtube.com/watch?v=$youtubeId"
-
-    Row(
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+        // Columna Derecha: Tarjeta de Video Tour Cinematográfico
         Column(
             modifier = Modifier
-                .weight(1.3f)
+                .weight(0.9f)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC0D1522))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xCC07101E))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                .padding(18.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Video Tour de ${dynamicCabin?.name ?: unit.name}",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = dynamicCabin?.description?.ifEmpty {
-                    "Recorrido en video cinematográfico para conocer los dormitorios, cocina equipada, estufa Bosca a leña y entorno natural de la cabaña."
-                } ?: "",
-                fontSize = 13.sp,
-                color = Color(0xFFCBD5E1),
-                lineHeight = 18.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Reproduce el video a pantalla completa en este televisor:",
-                fontSize = 11.5.sp,
-                color = Color(0xFFBAC4D0)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    VideoCameraCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "Video Tour Cinematográfico",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00E5FF)
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Recorrido en video de la cabaña, terraza y bosque nativo.",
+                    fontSize = 11.sp,
+                    color = Color(0xFFCBD5E1),
+                    textAlign = TextAlign.Center
+                )
+            }
 
-            val playInteraction = remember { MutableInteractionSource() }
-            val playFocused by playInteraction.collectIsFocusedAsState()
-
+            // Botón interactivo Reproducir
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .graphicsLayer {
-                        val scale = if (playFocused) 1.05f else 1.0f
+                        val scale = if (isPlayFocused) 1.05f else 1.0f
                         scaleX = scale
                         scaleY = scale
                     }
                     .clip(RoundedCornerShape(50))
-                    .background(Color(0xFF00E5FF))
+                    .background(if (isPlayFocused) Color(0xFF00E5FF) else Color(0xFF1E2836))
                     .border(
-                        width = if (playFocused) 2.dp else 0.dp,
-                        color = Color.White,
+                        width = if (isPlayFocused) 2.dp else 1.dp,
+                        color = if (isPlayFocused) Color.White else Color.White.copy(alpha = 0.30f),
                         shape = RoundedCornerShape(50)
                     )
                     .clickable(
@@ -1466,61 +1252,50 @@ private fun VideoTourPanelView(
                         onPlayFullscreen()
                     }
                     .focusable(interactionSource = playInteraction)
-                    .padding(horizontal = 22.dp, vertical = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                PlayCanvasIcon(color = Color.Black, modifier = Modifier.size(12.dp))
+                PlayCanvasIcon(
+                    color = if (isPlayFocused) Color.Black else Color.White,
+                    modifier = Modifier.size(13.dp)
+                )
                 Text(
-                    text = "▶ Ver Video Tour en Pantalla Completa",
-                    fontSize = 13.sp,
+                    text = "Ver Video en Pantalla Completa",
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Black
+                    color = if (isPlayFocused) Color.Black else Color.White
                 )
             }
-        }
 
-        // Tarjeta QR para ver en el móvil
-        Column(
-            modifier = Modifier
-                .width(220.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xCC0D1522))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                .padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.White)
-                    .padding(6.dp)
-            ) {
-                QrCodeView(
-                    content = youtubeUrl,
-                    modifier = Modifier.size(95.dp)
+            // Código QR para ver en móvil
+            val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
+            val youtubeUrl = "https://www.youtube.com/watch?v=$youtubeId"
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(76.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White)
+                        .padding(4.dp)
+                ) {
+                    QrCodeView(
+                        content = youtubeUrl,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "O escanéalo con tu móvil",
+                    fontSize = 9.sp,
+                    color = Color(0xFF94A3B8)
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "ABRIR EN EL MÓVIL",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                color = Color(0xFF00E5FF)
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "Escanea con la cámara",
-                fontSize = 9.5.sp,
-                color = Color(0xFF94A3B8)
-            )
         }
     }
 }
 
-/**
- * Overlay de reproducción de video a pantalla completa.
- */
+// =============================================================================
+// OVERLAY DE REPRODUCCIÓN DE VIDEO A PANTALLA COMPLETA
+// =============================================================================
 @OptIn(UnstableApi::class)
 @Composable
 private fun FullScreenVideoOverlay(
@@ -1653,7 +1428,7 @@ private fun Number.formatNumber(): String {
 }
 
 // =============================================================================
-// ICONOS VECTORIALES ULTRA LIGEROS NATIVOS PARA TV (PIXEL PERFECT)
+// ICONOS VECTORIALES NATIVOS DE ALTO RENDIMIENTO (PIXEL PERFECT)
 // =============================================================================
 
 @Composable
@@ -1675,7 +1450,6 @@ private fun HomeCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         }
         drawPath(path = path, color = color, style = stroke)
 
-        // Puerta
         val door = Path().apply {
             moveTo(w * 0.40f, h * 0.88f)
             lineTo(w * 0.40f, h * 0.60f)
@@ -1715,7 +1489,6 @@ private fun CarCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         }
         drawPath(path = body, color = color, style = stroke)
 
-        // Ruedas
         drawCircle(color = color, radius = h * 0.12f, center = Offset(w * 0.28f, h * 0.75f), style = Fill)
         drawCircle(color = color, radius = h * 0.12f, center = Offset(w * 0.72f, h * 0.75f), style = Fill)
     }
@@ -1756,53 +1529,26 @@ private fun FlameCanvasIcon(color: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GearCanvasIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val stroke = Stroke(width = 1.6f * density, cap = StrokeCap.Round)
-        drawCircle(color = color, radius = size.minDimension * 0.28f, style = stroke)
-
-        // Dientes
-        val cX = size.width / 2f
-        val cY = size.height / 2f
-        val rOut = size.minDimension * 0.45f
-        val rIn = size.minDimension * 0.32f
-
-        for (i in 0 until 8) {
-            val angle = Math.toRadians((i * 45).toDouble())
-            val x1 = (cX + rIn * Math.cos(angle)).toFloat()
-            val y1 = (cY + rIn * Math.sin(angle)).toFloat()
-            val x2 = (cX + rOut * Math.cos(angle)).toFloat()
-            val y2 = (cY + rOut * Math.sin(angle)).toFloat()
-            drawLine(color = color, start = Offset(x1, y1), end = Offset(x2, y2), strokeWidth = stroke.width)
-        }
-    }
-}
-
-@Composable
 private fun WifiCanvasIcon(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val stroke = Stroke(width = 1.6f * density, cap = StrokeCap.Round)
 
-        // Punto inferior
         drawCircle(color = color, radius = 2.2f * density, center = Offset(w * 0.50f, h * 0.85f), style = Fill)
 
-        // Arco 1
         val arc1 = Path().apply {
             moveTo(w * 0.32f, h * 0.65f)
             cubicTo(w * 0.40f, h * 0.55f, w * 0.60f, h * 0.55f, w * 0.68f, h * 0.65f)
         }
         drawPath(path = arc1, color = color, style = stroke)
 
-        // Arco 2
         val arc2 = Path().apply {
             moveTo(w * 0.16f, h * 0.45f)
             cubicTo(w * 0.32f, h * 0.30f, w * 0.68f, h * 0.30f, w * 0.84f, h * 0.45f)
         }
         drawPath(path = arc2, color = color, style = stroke)
 
-        // Arco 3
         val arc3 = Path().apply {
             moveTo(w * 0.05f, h * 0.25f)
             cubicTo(w * 0.28f, h * 0.08f, w * 0.72f, h * 0.08f, w * 0.95f, h * 0.25f)
@@ -1818,7 +1564,6 @@ private fun WhatsAppCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
 
-        // Círculo con colita de bocadillo
         val bubble = Path().apply {
             moveTo(w * 0.50f, h * 0.10f)
             cubicTo(w * 0.80f, h * 0.10f, w * 0.90f, h * 0.35f, w * 0.90f, h * 0.55f)
@@ -1831,7 +1576,6 @@ private fun WhatsAppCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         }
         drawPath(path = bubble, color = color, style = stroke)
 
-        // Auricular
         val phone = Path().apply {
             moveTo(w * 0.36f, h * 0.38f)
             cubicTo(w * 0.38f, h * 0.52f, w * 0.48f, h * 0.62f, w * 0.62f, h * 0.64f)
@@ -1846,11 +1590,7 @@ private fun PersonCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val stroke = Stroke(width = 1.5f * density, cap = StrokeCap.Round)
         val w = size.width
         val h = size.height
-
-        // Cabeza
         drawCircle(color = color, radius = h * 0.20f, center = Offset(w * 0.50f, h * 0.28f), style = stroke)
-
-        // Cuerpo
         val body = Path().apply {
             moveTo(w * 0.15f, h * 0.88f)
             cubicTo(w * 0.20f, h * 0.58f, w * 0.80f, h * 0.58f, w * 0.85f, h * 0.88f)
@@ -1865,14 +1605,11 @@ private fun RulerCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val stroke = Stroke(width = 1.5f * density, cap = StrokeCap.Round)
         val w = size.width
         val h = size.height
-
         val ruler = Path().apply {
             moveTo(w * 0.15f, h * 0.20f)
             lineTo(w * 0.85f, h * 0.85f)
         }
         drawPath(path = ruler, color = color, style = stroke)
-
-        // Marcas
         drawLine(color = color, start = Offset(w * 0.35f, h * 0.32f), end = Offset(w * 0.43f, h * 0.26f), strokeWidth = stroke.width)
         drawLine(color = color, start = Offset(w * 0.50f, h * 0.50f), end = Offset(w * 0.60f, h * 0.42f), strokeWidth = stroke.width)
         drawLine(color = color, start = Offset(w * 0.65f, h * 0.68f), end = Offset(w * 0.73f, h * 0.60f), strokeWidth = stroke.width)
@@ -1885,19 +1622,13 @@ private fun ShowerCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val stroke = Stroke(width = 1.5f * density, cap = StrokeCap.Round)
         val w = size.width
         val h = size.height
-
-        // Tubo
         val pipe = Path().apply {
             moveTo(w * 0.15f, h * 0.85f)
             lineTo(w * 0.15f, h * 0.35f)
             cubicTo(w * 0.15f, h * 0.20f, w * 0.55f, h * 0.20f, w * 0.55f, h * 0.35f)
         }
         drawPath(path = pipe, color = color, style = stroke)
-
-        // Cabezal
         drawLine(color = color, start = Offset(w * 0.42f, h * 0.42f), end = Offset(w * 0.68f, h * 0.42f), strokeWidth = stroke.width * 1.5f)
-
-        // Gotas
         drawLine(color = color, start = Offset(w * 0.48f, h * 0.52f), end = Offset(w * 0.46f, h * 0.62f), strokeWidth = stroke.width)
         drawLine(color = color, start = Offset(w * 0.55f, h * 0.52f), end = Offset(w * 0.55f, h * 0.65f), strokeWidth = stroke.width)
         drawLine(color = color, start = Offset(w * 0.62f, h * 0.52f), end = Offset(w * 0.64f, h * 0.62f), strokeWidth = stroke.width)
@@ -1910,13 +1641,8 @@ private fun PhotoCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val stroke = Stroke(width = 1.5f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val w = size.width
         val h = size.height
-
         drawRoundRect(color = color, topLeft = Offset(w * 0.10f, h * 0.15f), size = Size(w * 0.80f, h * 0.70f), cornerRadius = CornerRadius(2.dp.toPx()), style = stroke)
-
-        // Sol / Círculo
         drawCircle(color = color, radius = h * 0.10f, center = Offset(w * 0.32f, h * 0.38f), style = stroke)
-
-        // Montaña
         val mountain = Path().apply {
             moveTo(w * 0.15f, h * 0.75f)
             lineTo(w * 0.45f, h * 0.48f)
@@ -1934,8 +1660,6 @@ private fun BedCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val stroke = Stroke(width = 1.5f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val w = size.width
         val h = size.height
-
-        // Respaldar y estructura
         val frame = Path().apply {
             moveTo(w * 0.10f, h * 0.30f)
             lineTo(w * 0.10f, h * 0.80f)
@@ -1944,8 +1668,6 @@ private fun BedCanvasIcon(color: Color, modifier: Modifier = Modifier) {
             lineTo(w * 0.90f, h * 0.80f)
         }
         drawPath(path = frame, color = color, style = stroke)
-
-        // Almohada
         drawRoundRect(color = color, topLeft = Offset(w * 0.18f, h * 0.45f), size = Size(w * 0.24f, h * 0.16f), cornerRadius = CornerRadius(2.dp.toPx()), style = stroke)
     }
 }
@@ -1956,11 +1678,7 @@ private fun VideoCameraCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val stroke = Stroke(width = 1.5f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val w = size.width
         val h = size.height
-
-        // Cuerpo cámara
         drawRoundRect(color = color, topLeft = Offset(w * 0.10f, h * 0.25f), size = Size(w * 0.55f, h * 0.50f), cornerRadius = CornerRadius(2.dp.toPx()), style = stroke)
-
-        // Lente triangular
         val lens = Path().apply {
             moveTo(w * 0.65f, h * 0.38f)
             lineTo(w * 0.90f, h * 0.25f)
@@ -1995,20 +1713,5 @@ private fun CloseCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val h = size.height
         drawLine(color = color, start = Offset(w * 0.15f, h * 0.15f), end = Offset(w * 0.85f, h * 0.85f), strokeWidth = stroke.width)
         drawLine(color = color, start = Offset(w * 0.85f, h * 0.15f), end = Offset(w * 0.15f, h * 0.85f), strokeWidth = stroke.width)
-    }
-}
-
-@Composable
-private fun ChevronRightCanvasIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val stroke = Stroke(width = 1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val w = size.width
-        val h = size.height
-        val path = Path().apply {
-            moveTo(w * 0.30f, h * 0.15f)
-            lineTo(w * 0.70f, h * 0.50f)
-            lineTo(w * 0.30f, h * 0.85f)
-        }
-        drawPath(path = path, color = color, style = stroke)
     }
 }
