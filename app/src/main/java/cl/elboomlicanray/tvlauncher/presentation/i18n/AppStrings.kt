@@ -152,6 +152,9 @@ data class AppStrings(
     val allYear: String,
     val scanMapMobile: String,
     val scanForRoute: String,
+    val sendToWhatsApp: String,
+    val sendingToWhatsApp: String,
+    val sentToWhatsAppSuccess: String,
 
     // Apps & Streaming Dialog
     val streamingDialogTitle: String,
@@ -297,6 +300,9 @@ object AppStringsCatalog {
         allYear = "Todo el año",
         scanMapMobile = "ABRIR MAPA EN EL MÓVIL",
         scanForRoute = "Escanea para ver la ruta",
+        sendToWhatsApp = "Enviar a mi WhatsApp",
+        sendingToWhatsApp = "Enviando a tu celular...",
+        sentToWhatsAppSuccess = "¡Listo! Te enviamos la información a tu WhatsApp",
 
         streamingDialogTitle = "Apps & Entretenimiento",
         streamingDialogSubtitle = "Aplicaciones instaladas en este televisor",
@@ -436,6 +442,9 @@ object AppStringsCatalog {
         allYear = "All year",
         scanMapMobile = "OPEN MAP ON PHONE",
         scanForRoute = "Scan to view route",
+        sendToWhatsApp = "Send to my WhatsApp",
+        sendingToWhatsApp = "Sending to your phone...",
+        sentToWhatsAppSuccess = "Done! Details sent to your WhatsApp",
 
         streamingDialogTitle = "Apps & Entertainment",
         streamingDialogSubtitle = "Installed applications on this TV",
@@ -575,6 +584,9 @@ object AppStringsCatalog {
         allYear = "O ano todo",
         scanMapMobile = "ABRIR MAPA NO CELULAR",
         scanForRoute = "Escaneie para ver a rota",
+        sendToWhatsApp = "Enviar para meu WhatsApp",
+        sendingToWhatsApp = "Enviando para o seu celular...",
+        sentToWhatsAppSuccess = "Pronto! Informações enviadas para seu WhatsApp",
 
         streamingDialogTitle = "Apps & Entretenimento",
         streamingDialogSubtitle = "Aplicativos instalados nesta TV",
@@ -714,6 +726,9 @@ object AppStringsCatalog {
         allYear = "Toute l'année",
         scanMapMobile = "OUVRIR LA CARTE SUR MOBILE",
         scanForRoute = "Scannez pour afficher le trajet",
+        sendToWhatsApp = "Envoyer sur mon WhatsApp",
+        sendingToWhatsApp = "Envoi vers votre téléphone...",
+        sentToWhatsAppSuccess = "Fait ! Informations envoyées sur votre WhatsApp",
 
         streamingDialogTitle = "Apps & Divertissement",
         streamingDialogSubtitle = "Applications installées sur ce téléviseur",
@@ -853,6 +868,9 @@ object AppStringsCatalog {
         allYear = "Ganzjährig",
         scanMapMobile = "KARTE AUF DEM SMARTPHONE ÖFFNEN",
         scanForRoute = "Scannen für Anfahrtsroute",
+        sendToWhatsApp = "An mein WhatsApp senden",
+        sendingToWhatsApp = "Wird an dein Smartphone gesendet...",
+        sentToWhatsAppSuccess = "Fertig! Infos an dein WhatsApp gesendet",
 
         streamingDialogTitle = "Apps & Unterhaltung",
         streamingDialogSubtitle = "Installierte Anwendungen auf diesem Fernseher",

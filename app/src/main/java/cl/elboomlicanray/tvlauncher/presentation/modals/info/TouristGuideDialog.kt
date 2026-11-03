@@ -8,6 +8,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -110,9 +111,12 @@ private val FILTER_CATEGORIES = listOf(
 fun TouristGuideDialog(
     attractions: List<DynamicTouristAttraction>,
     selectedLanguage: String = "ES",
+    onSendAttractionToWhatsApp: (suspend (DynamicTouristAttraction) -> Result<String>)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isSendingWhatsApp by remember { mutableStateOf(false) }
     val strings = remember(selectedLanguage) {
         cl.elboomlicanray.tvlauncher.presentation.i18n.AppStringsCatalog.get(selectedLanguage)
     }
@@ -663,6 +667,66 @@ fun TouristGuideDialog(
                                         ArrowOutwardCanvasIcon(
                                             color = Color.Black,
                                             modifier = Modifier.size(11.dp)
+                                        )
+                                    }
+                                }
+
+                                // Botón "Enviar a mi WhatsApp" con soporte remoto y feedback
+                                if (onSendAttractionToWhatsApp != null) {
+                                    val waInteraction = remember { MutableInteractionSource() }
+                                    val waFocused by waInteraction.collectIsFocusedAsState()
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                        modifier = Modifier
+                                            .graphicsLayer {
+                                                val scale = if (waFocused) 1.05f else 1.0f
+                                                scaleX = scale
+                                                scaleY = scale
+                                            }
+                                            .clip(RoundedCornerShape(50))
+                                            .background(if (waFocused) Color(0xFF25D366) else Color(0x3325D366))
+                                            .border(
+                                                width = if (waFocused) 2.dp else 1.dp,
+                                                color = if (waFocused) Color.White else Color(0xFF25D366).copy(alpha = 0.80f),
+                                                shape = RoundedCornerShape(50)
+                                            )
+                                            .clickable(
+                                                interactionSource = waInteraction,
+                                                indication = null,
+                                                enabled = !isSendingWhatsApp
+                                            ) {
+                                                if (!isSendingWhatsApp) {
+                                                    isSendingWhatsApp = true
+                                                    coroutineScope.launch {
+                                                        Toast.makeText(context, strings.sendingToWhatsApp, Toast.LENGTH_SHORT).show()
+                                                        val result = onSendAttractionToWhatsApp(selectedAttraction)
+                                                        isSendingWhatsApp = false
+                                                        result.onSuccess { msg ->
+                                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                        }.onFailure { err ->
+                                                            Toast.makeText(
+                                                                context,
+                                                                err.message ?: "No se pudo enviar el mensaje a WhatsApp",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            .focusable(interactionSource = waInteraction)
+                                            .padding(horizontal = 16.dp, vertical = 9.dp)
+                                    ) {
+                                        WhatsAppCanvasIcon(
+                                            color = if (waFocused) Color.Black else Color(0xFF25D366),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = if (isSendingWhatsApp) strings.sendingToWhatsApp else strings.sendToWhatsApp,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (waFocused) Color.Black else Color.White
                                         )
                                     }
                                 }
@@ -1452,5 +1516,38 @@ private fun CloseCanvasIcon(color: Color, modifier: Modifier = Modifier) {
         val h = size.height
         drawLine(color = color, start = Offset(w * 0.20f, h * 0.20f), end = Offset(w * 0.80f, h * 0.80f), strokeWidth = stroke.width, cap = StrokeCap.Round)
         drawLine(color = color, start = Offset(w * 0.80f, h * 0.20f), end = Offset(w * 0.20f, h * 0.80f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun WhatsAppCanvasIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val stroke = Stroke(width = 1.6f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val w = size.width
+        val h = size.height
+        
+        // Burbuja de chat exterior
+        val bubblePath = Path().apply {
+            moveTo(w * 0.25f, h * 0.78f)
+            lineTo(w * 0.15f, h * 0.88f)
+            lineTo(w * 0.22f, h * 0.70f)
+            close()
+        }
+        drawPath(bubblePath, color = color)
+        
+        // Círculo principal
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.38f,
+            center = Offset(w * 0.50f, h * 0.46f),
+            style = stroke
+        )
+        
+        // Teléfono auricular estilizado interior
+        val phonePath = Path().apply {
+            moveTo(w * 0.38f, h * 0.40f)
+            cubicTo(w * 0.38f, h * 0.52f, w * 0.48f, h * 0.62f, w * 0.60f, h * 0.62f)
+        }
+        drawPath(phonePath, color = color, style = stroke)
     }
 }

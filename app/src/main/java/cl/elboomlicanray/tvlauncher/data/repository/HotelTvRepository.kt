@@ -144,7 +144,7 @@ class HotelTvRepository @Inject constructor(
                                 selectedBedsSummary = unit.bedsDescription,
                                 specialRequests = nextGuestInfo.specialRequests,
                                 checkinDate = "Hoy",
-                                checkoutDate = "Salida oficial 11:00 hrs",
+                                checkoutDate = "",
                                 nights = 1,
                                 stayProgress = "Llegada hoy",
                                 totalAmount = 0L,
@@ -176,8 +176,9 @@ class HotelTvRepository @Inject constructor(
                             GuestStayInfo(
                                 isOccupied = false,
                                 screenState = ScreenStayState.CLEANING,
-                                title = "Alistamiento en curso",
-                                subtitle = "Aseo pendiente · ${unit.name}",
+                                title = "Preparación de alojamiento",
+                                subtitle = "Preparación y Aseo · ${unit.name}",
+                                selectedBedsSummary = unit.bedsDescription,
                                 wifiNetwork = wifiNetwork,
                                 wifiPassword = wifiPass,
                                 wifiSpeedText = wifiSpeedText,
@@ -888,5 +889,87 @@ class HotelTvRepository @Inject constructor(
             heroBgImage = heroBg,
             faqs = faqsList
         )
+    }
+
+    /**
+     * Envía la ficha resumida del atractivo turístico al WhatsApp del huésped que se encuentra
+     * actualmente alojado en esta unidad física (considerando las 11:00 hrs de check-out).
+     */
+    suspend fun sendAttractionToGuestWhatsApp(
+        attractionName: String,
+        category: String,
+        hours: String,
+        price: String,
+        drivingTime: String,
+        googleMapsUrl: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val unit = preferencesHelper.getConfiguredUnit()
+        val token = preferencesHelper.getUnitToken()
+        val baseUrl = preferencesHelper.getApiBaseUrl()
+        // El endpoint base suele ser https://elboom.cl/api/hotel-tv
+        val endpoint = if (baseUrl.endsWith("/hotel-tv")) {
+            baseUrl.replace("/hotel-tv", "/hotel-tv/send-attraction")
+        } else {
+            "https://elboom.cl/api/hotel-tv/send-attraction"
+        }
+
+        var connection: HttpURLConnection? = null
+        try {
+            val url = URL(endpoint)
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+                requestMethod = "POST"
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("Accept", "application/json")
+                if (token.isNotBlank()) {
+                    setRequestProperty("Authorization", "Bearer $token")
+                    setRequestProperty("x-tv-token", token)
+                }
+                setRequestProperty("User-Agent", "ElBoom-SmartTV/${cl.elboomlicanray.tvlauncher.BuildConfig.VERSION_NAME}")
+                useCaches = false
+            }
+
+            val jsonBody = JSONObject().apply {
+                put("unitId", unit.id)
+                put("token", token)
+                put("attractionName", attractionName)
+                put("category", category)
+                put("hours", hours)
+                put("price", price)
+                put("drivingTime", drivingTime)
+                put("googleMapsUrl", googleMapsUrl)
+            }
+
+            connection.outputStream.use { os ->
+                val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                os.write(input, 0, input.size)
+            }
+
+            val statusCode = connection.responseCode
+            val responseStream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
+            val responseText = responseStream?.bufferedReader()?.use { it.readText() } ?: ""
+
+            if (responseText.isNotBlank()) {
+                val json = JSONObject(responseText)
+                if (json.optBoolean("success", false)) {
+                    val guestName = json.optString("guestFirstName", "")
+                    val msg = json.optString("message", "Información enviada exitosamente a tu WhatsApp")
+                    val resultMsg = if (guestName.isNotBlank()) "¡Listo $guestName! Te enviamos los detalles a tu WhatsApp" else msg
+                    Result.success(resultMsg)
+                } else {
+                    val err = json.optString("error", "No se pudo enviar el mensaje")
+                    Result.failure(Exception(err))
+                }
+            } else {
+                Result.failure(Exception("Error en servidor ($statusCode)"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error enviando atractivo a WhatsApp: ${e.message}", e)
+            Result.failure(Exception(e.message ?: "Error de conexión con el servidor"))
+        } finally {
+            connection?.disconnect()
+        }
     }
 }

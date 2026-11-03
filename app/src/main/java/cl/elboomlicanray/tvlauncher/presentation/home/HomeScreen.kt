@@ -349,6 +349,18 @@ fun HomeScreen(
             "tourist_guide" -> TouristGuideDialog(
                 attractions = uiState.touristAttractions,
                 selectedLanguage = currentLanguage,
+                onSendAttractionToWhatsApp = { attraction ->
+                    viewModel.sendAttractionToGuestWhatsApp(
+                        attractionName = attraction.name,
+                        category = attraction.category,
+                        hours = attraction.hours,
+                        price = attraction.price,
+                        drivingTime = attraction.drivingTime,
+                        googleMapsUrl = attraction.googleMapsUrl.ifBlank {
+                            "https://maps.google.com/?q=${attraction.name.replace(" ", "+")}+Lican+Ray"
+                        }
+                    )
+                },
                 onDismiss = { activeModal = "none" }
             )
             "rules" -> PropertyRulesDialog(

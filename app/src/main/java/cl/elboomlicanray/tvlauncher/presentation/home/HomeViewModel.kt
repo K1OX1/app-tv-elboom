@@ -421,7 +421,7 @@ class HomeViewModel @Inject constructor(
                 totalGuests = nextGuest?.totalGuests ?: state.guestStay.totalGuests,
                 checkinDate = "Hoy",
                 checkinOfficialTime = nextGuest?.checkinTime ?: "15:00 hrs",
-                checkoutDate = "Salida oficial 11:00 hrs",
+                checkoutDate = "",
                 stayProgress = "Llegada hoy",
                 balanceMessage = "Cuenta al día",
                 cleaningInfo = state.guestStay.cleaningInfo.copy(isDirty = false, status = "LIMPIA")
@@ -476,5 +476,23 @@ class HomeViewModel @Inject constructor(
 
     fun openTvNetworkSettings() {
         smartDnsManager.openNetworkSettings(context)
+    }
+
+    suspend fun sendAttractionToGuestWhatsApp(
+        attractionName: String,
+        category: String,
+        hours: String,
+        price: String,
+        drivingTime: String,
+        googleMapsUrl: String
+    ): Result<String> {
+        return hotelTvRepository.sendAttractionToGuestWhatsApp(
+            attractionName = attractionName,
+            category = category,
+            hours = hours,
+            price = price,
+            drivingTime = drivingTime,
+            googleMapsUrl = googleMapsUrl
+        )
     }
 }
