@@ -3,6 +3,7 @@ package cl.elboomlicanray.tvlauncher.presentation.modals.stay
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -49,6 +50,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -1474,14 +1480,14 @@ private fun VideoTourPanelView(
                             interactionSource = ytInteraction,
                             indication = null
                         ) {
-                            launchYoutubeVideo(context, youtubeUrl)
+                            onPlayFullscreen()
                         }
                         .focusable(interactionSource = ytInteraction)
                         .padding(horizontal = 20.dp, vertical = 10.dp)
                 ) {
                     PlayCanvasIcon(color = Color.White, modifier = Modifier.size(12.dp))
                     Text(
-                        text = "▶ Reproducir en YouTube TV",
+                        text = "▶ Reproducir Video Tour",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -1589,9 +1595,34 @@ private fun FullScreenVideoOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown &&
+                    (keyEvent.key == Key.Back || keyEvent.key == Key.Escape)) {
+                    onClose()
+                    true
+                } else {
+                    false
+                }
+            }
     ) {
         if (youtubeVideoId != null) {
             val embedUrl = "https://www.youtube-nocookie.com/embed/$youtubeVideoId?autoplay=1&controls=1&rel=0&iv_load_policy=3&playsinline=1"
+            var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+
+            DisposableEffect(Unit) {
+                onDispose {
+                    try {
+                        webViewInstance?.apply {
+                            stopLoading()
+                            loadUrl("about:blank")
+                            clearHistory()
+                            (parent as? ViewGroup)?.removeView(this)
+                            destroy()
+                        }
+                    } catch (_: Exception) {}
+                    webViewInstance = null
+                }
+            }
 
             AndroidView(
                 factory = { ctx ->
@@ -1607,7 +1638,16 @@ private fun FullScreenVideoOverlay(
                         settings.useWideViewPort = true
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
+                        setOnKeyListener { _, keyCode, event ->
+                            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
+                                onClose()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                         loadUrl(embedUrl)
+                        webViewInstance = this
                     }
                 },
                 modifier = Modifier.fillMaxSize()

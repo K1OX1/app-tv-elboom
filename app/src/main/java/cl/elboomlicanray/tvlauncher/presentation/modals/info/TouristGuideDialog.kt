@@ -3,6 +3,7 @@ package cl.elboomlicanray.tvlauncher.presentation.modals.info
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -48,6 +49,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -584,13 +590,7 @@ fun TouristGuideDialog(
                                                 interactionSource = videoInteraction,
                                                 indication = null
                                             ) {
-                                                val videoUrl = selectedAttraction.videoUrl.ifBlank { selectedAttraction.youtubeUrl }
-                                                val ytId = extractYoutubeVideoId(videoUrl)
-                                                if (ytId != null) {
-                                                    launchYoutubeVideoTV(context, videoUrl)
-                                                } else {
-                                                    isPlayingVideo = true
-                                                }
+                                                isPlayingVideo = true
                                             }
                                             .focusable(interactionSource = videoInteraction)
                                             .padding(horizontal = 16.dp, vertical = 7.dp)
@@ -1081,6 +1081,15 @@ private fun FullScreenVideoOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown &&
+                    (keyEvent.key == Key.Back || keyEvent.key == Key.Escape)) {
+                    onClose()
+                    true
+                } else {
+                    false
+                }
+            }
     ) {
         if (youtubeVideoId != null) {
             val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -1142,6 +1151,14 @@ private fun FullScreenVideoOverlay(
                         }
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
+                        setOnKeyListener { _, keyCode, event ->
+                            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
+                                onClose()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                         loadDataWithBaseURL("https://elboom.cl", htmlContent, "text/html", "UTF-8", null)
                         webViewInstance = this
                     }
@@ -1299,20 +1316,25 @@ private fun matchesFilter(attraction: DynamicTouristAttraction, filter: String):
 
 /**
  * Asigna la fotografía panorámica cinematográfica para cada destino.
- * Para Licán Ray utiliza la panorámica fotorrealista limpia al atardecer en el lago Calafquén.
+ * Prioriza la imagen configurada dinámicamente desde el CMS web (mainImageUrl).
+ * Si no está disponible, utiliza las fotografías locales optimizadas de respaldo.
  */
 private fun getAttractionBackground(item: DynamicTouristAttraction): Any {
     return when {
-        item.name.contains("Licán", ignoreCase = true) -> R.drawable.bg_calafquen_clean
         item.mainImageUrl.isNotBlank() -> item.mainImageUrl
+        item.name.contains("Licán", ignoreCase = true) -> R.drawable.bg_calafquen_clean
         else -> R.drawable.bg_calafquen_clean
     }
 }
 
 /**
  * Asigna la miniatura exacta 16:9 de la guía turística del alojamiento.
+ * Prioriza la imagen configurada desde la web para que cualquier cambio se refleje al instante.
  */
 private fun getAttractionThumbnail(item: DynamicTouristAttraction): Any {
+    if (item.mainImageUrl.isNotBlank()) {
+        return item.mainImageUrl
+    }
     return when {
         item.name.contains("Licán", ignoreCase = true) -> R.drawable.guide_licanray
         item.name.contains("Ziwilwe", ignoreCase = true) -> R.drawable.guide_ziwilwe
@@ -1320,20 +1342,21 @@ private fun getAttractionThumbnail(item: DynamicTouristAttraction): Any {
         item.name.contains("Geométrica", ignoreCase = true) -> R.drawable.guide_termas
         item.name.contains("Huilo", ignoreCase = true) -> R.drawable.guide_huilohuilo
         item.name.contains("Hua Hum", ignoreCase = true) -> R.drawable.guide_huahum
-        item.mainImageUrl.isNotBlank() -> item.mainImageUrl
         else -> R.drawable.guide_licanray
     }
 }
 
 /**
  * Obtiene la descripción concisa en 2 líneas ideal para televisión.
+ * Prioriza el texto configurado en la web; si está vacío, recurre a la descripción por defecto.
  */
 private fun getCleanDescription(attraction: DynamicTouristAttraction): String {
+    val short = attraction.descriptionShort.trim()
+    if (short.isNotBlank()) return short
     if (attraction.name.contains("Licán", ignoreCase = true)) {
         return "Un tranquilo balneario a orillas del Lago Calafquén, a 10 minutos de El Boom."
     }
-    val short = attraction.descriptionShort.trim()
-    return if (short.isNotBlank()) short else attraction.descriptionLong.trim()
+    return attraction.descriptionLong.trim()
 }
 
 private fun cleanHours(raw: String, strings: cl.elboomlicanray.tvlauncher.presentation.i18n.AppStrings): String {
