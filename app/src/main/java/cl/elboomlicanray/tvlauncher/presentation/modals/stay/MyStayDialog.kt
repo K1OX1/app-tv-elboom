@@ -1454,79 +1454,36 @@ private fun VideoTourPanelView(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .graphicsLayer {
+                        val scale = if (playFocused) 1.05f else 1.0f
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .clip(RoundedCornerShape(50))
+                    .background(if (playFocused) Color(0xFFDC2626) else Color(0xFFE50914))
+                    .border(
+                        width = if (playFocused) 2.dp else 0.dp,
+                        color = Color.White,
+                        shape = RoundedCornerShape(50)
+                    )
+                    .clickable(
+                        interactionSource = playInteraction,
+                        indication = null
+                    ) {
+                        onPlayFullscreen()
+                    }
+                    .focusable(interactionSource = playInteraction)
+                    .padding(horizontal = 22.dp, vertical = 10.dp)
             ) {
-                // Botón primario: Abrir directamente en la app oficial de YouTube TV (Opción 1 - Máximo rendimiento y sin errores)
-                val ytInteraction = remember { MutableInteractionSource() }
-                val ytFocused by ytInteraction.collectIsFocusedAsState()
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val scale = if (ytFocused) 1.05f else 1.0f
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        .clip(RoundedCornerShape(50))
-                        .background(if (ytFocused) Color(0xFFDC2626) else Color(0xFFE50914))
-                        .border(
-                            width = if (ytFocused) 2.dp else 0.dp,
-                            color = Color.White,
-                            shape = RoundedCornerShape(50)
-                        )
-                        .clickable(
-                            interactionSource = ytInteraction,
-                            indication = null
-                        ) {
-                            onPlayFullscreen()
-                        }
-                        .focusable(interactionSource = ytInteraction)
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                ) {
-                    PlayCanvasIcon(color = Color.White, modifier = Modifier.size(12.dp))
-                    Text(
-                        text = "▶ Reproducir Video Tour",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-
-                // Botón secundario: Reproductor interno
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val scale = if (playFocused) 1.05f else 1.0f
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        .clip(RoundedCornerShape(50))
-                        .background(if (playFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f))
-                        .border(
-                            width = if (playFocused) 2.dp else 1.dp,
-                            color = if (playFocused) Color.White else Color.White.copy(alpha = 0.35f),
-                            shape = RoundedCornerShape(50)
-                        )
-                        .clickable(
-                            interactionSource = playInteraction,
-                            indication = null
-                        ) {
-                            onPlayFullscreen()
-                        }
-                        .focusable(interactionSource = playInteraction)
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = "Pantalla Completa Interna",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (playFocused) Color.Black else Color.White
-                    )
-                }
+                PlayCanvasIcon(color = Color.White, modifier = Modifier.size(12.dp))
+                Text(
+                    text = "▶ Reproducir Video Tour en TV",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
         }
 
@@ -1590,37 +1547,141 @@ private fun FullScreenVideoOverlay(
     }
 
     val youtubeVideoId = remember(videoUrl) { extractYoutubeVideoId(videoUrl) }
+    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+    var exoPlayerInstance by remember { mutableStateOf<ExoPlayer?>(null) }
+    var feedbackText by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(feedbackText) {
+        if (feedbackText != null) {
+            kotlinx.coroutines.delay(850)
+            feedbackText = null
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown &&
-                    (keyEvent.key == Key.Back || keyEvent.key == Key.Escape)) {
-                    onClose()
-                    true
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    when (keyEvent.key) {
+                        Key.Back, Key.Escape -> {
+                            onClose()
+                            true
+                        }
+                        Key.DirectionRight -> {
+                            if (youtubeVideoId != null) {
+                                webViewInstance?.evaluateJavascript("seekRelative(10);", null)
+                            } else {
+                                exoPlayerInstance?.let { p -> p.seekTo(p.currentPosition + 10_000L) }
+                            }
+                            feedbackText = "Adelantar +10s ⏩"
+                            true
+                        }
+                        Key.DirectionLeft -> {
+                            if (youtubeVideoId != null) {
+                                webViewInstance?.evaluateJavascript("seekRelative(-10);", null)
+                            } else {
+                                exoPlayerInstance?.let { p -> p.seekTo(maxOf(0L, p.currentPosition - 10_000L)) }
+                            }
+                            feedbackText = "Retroceder -10s ⏪"
+                            true
+                        }
+                        else -> false
+                    }
                 } else {
                     false
                 }
             }
     ) {
         if (youtubeVideoId != null) {
-            val embedUrl = "https://www.youtube-nocookie.com/embed/$youtubeVideoId?autoplay=1&controls=1&rel=0&iv_load_policy=3&playsinline=1"
-            var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            val htmlContent = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
+                        #ytIframe { width: 100%; height: 100%; border: none; }
+                        .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
+                        .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
+                        .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
+                    </style>
+                </head>
+                <body>
+                    <iframe id="ytIframe"
+                        src="https://www.youtube-nocookie.com/embed/$youtubeVideoId?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&fs=0&playsinline=1&origin=https://elboom.cl" 
+                        title="Video Tour" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowfullscreen>
+                    </iframe>
+                    <script>
+                        var tag = document.createElement('script');
+                        tag.src = "https://www.youtube.com/iframe_api";
+                        var first = document.getElementsByTagName('script')[0];
+                        first.parentNode.insertBefore(tag, first);
+
+                        var player;
+                        function onYouTubeIframeAPIReady() {
+                            player = new YT.Player('ytIframe', {
+                                events: {
+                                    'onReady': function(e) { e.target.playVideo(); }
+                                }
+                            });
+                        }
+                        function seekRelative(sec) {
+                            if (player && typeof player.getCurrentTime === 'function') {
+                                var c = player.getCurrentTime();
+                                player.seekTo(Math.max(0, c + sec), true);
+                            } else {
+                                var ifr = document.getElementById('ytIframe');
+                                if (ifr && ifr.contentWindow) {
+                                    ifr.contentWindow.postMessage(JSON.stringify({
+                                        event: 'command',
+                                        func: 'seekTo',
+                                        args: [sec > 0 ? 10 : 0, true]
+                                    }), '*');
+                                }
+                            }
+                        }
+                        function togglePlayPause() {
+                            if (player && typeof player.getPlayerState === 'function') {
+                                if (player.getPlayerState() === 1) player.pauseVideo();
+                                else player.playVideo();
+                            }
+                        }
+                        setInterval(function() {
+                            try {
+                                var btn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-text');
+                                if (btn) btn.click();
+                                var vid = document.querySelector('.ad-showing video');
+                                if (vid && vid.duration) vid.currentTime = vid.duration;
+                            } catch(e) {}
+                        }, 200);
+                    </script>
+                </body>
+                </html>
+            """.trimIndent()
 
             DisposableEffect(Unit) {
                 onDispose {
                     try {
                         webViewInstance?.apply {
                             stopLoading()
+                            onPause()
+                            pauseTimers()
                             loadUrl("about:blank")
                             clearHistory()
+                            clearCache(true)
+                            removeAllViews()
                             (parent as? ViewGroup)?.removeView(this)
                             destroy()
                         }
                     } catch (_: Exception) {}
                     webViewInstance = null
+                    System.gc()
                 }
             }
 
@@ -1631,11 +1692,23 @@ private fun FullScreenVideoOverlay(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.mediaPlaybackRequiresUserGesture = false
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            mediaPlaybackRequiresUserGesture = false
+                            loadWithOverviewMode = true
+                            useWideViewPort = true
+                            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                            setSupportZoom(false)
+                            builtInZoomControls = false
+                            displayZoomControls = false
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            userAgentString = desktopUserAgent
+                        }
+                        setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
                         setOnKeyListener { _, keyCode, event ->
@@ -1646,7 +1719,7 @@ private fun FullScreenVideoOverlay(
                                 false
                             }
                         }
-                        loadUrl(embedUrl)
+                        loadDataWithBaseURL("https://elboom.cl", htmlContent, "text/html", "UTF-8", null)
                         webViewInstance = this
                     }
                 },
@@ -1662,14 +1735,20 @@ private fun FullScreenVideoOverlay(
             }
 
             DisposableEffect(exoPlayer) {
-                onDispose { exoPlayer.release() }
+                exoPlayerInstance = exoPlayer
+                onDispose {
+                    exoPlayerInstance = null
+                    exoPlayer.stop()
+                    exoPlayer.release()
+                    System.gc()
+                }
             }
 
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         player = exoPlayer
-                        useController = true
+                        useController = false
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1680,12 +1759,35 @@ private fun FullScreenVideoOverlay(
             )
         }
 
-        // Barra superior con botón Volver
+        // Indicador visual flotante de adelantar / retroceder (+10s / -10s)
+        AnimatedVisibility(
+            visible = feedbackText != null,
+            enter = fadeIn(tween(80)) + scaleIn(initialScale = 0.85f),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.Black.copy(alpha = 0.82f))
+                    .border(1.2.dp, Color(0xFF00E5FF), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = feedbackText ?: "",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Barra superior con ÚNICO botón Volver
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 36.dp, vertical = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
             val returnInteraction = remember { MutableInteractionSource() }
@@ -1722,64 +1824,6 @@ private fun FullScreenVideoOverlay(
                     color = if (returnFocused) Color.Black else Color.White
                 )
             }
-
-            if (youtubeVideoId != null) {
-                val appInteraction = remember { MutableInteractionSource() }
-                val appFocused by appInteraction.collectIsFocusedAsState()
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            if (appFocused) Color(0xFFDC2626)
-                            else Color.Black.copy(alpha = 0.65f)
-                        )
-                        .border(
-                            width = if (appFocused) 2.dp else 1.dp,
-                            color = if (appFocused) Color.White else Color.White.copy(alpha = 0.35f),
-                            shape = RoundedCornerShape(50)
-                        )
-                        .clickable(
-                            interactionSource = appInteraction,
-                            indication = null
-                        ) {
-                            launchYoutubeVideo(context, videoUrl)
-                        }
-                        .focusable(interactionSource = appInteraction)
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = "▶ Abrir en App de YouTube TV",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Lanza el video directamente en la aplicación nativa de YouTube para Android TV (o navegador).
- */
-private fun launchYoutubeVideo(context: Context, videoUrl: String) {
-    try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
-            setPackage("com.google.android.youtube.tv")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        context.startActivity(intent)
-    } catch (_: Exception) {
-        try {
-            val genericIntent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            context.startActivity(genericIntent)
-        } catch (_: Exception) {
-            Toast.makeText(context, "No se pudo abrir el reproductor de YouTube", Toast.LENGTH_SHORT).show()
         }
     }
 }
