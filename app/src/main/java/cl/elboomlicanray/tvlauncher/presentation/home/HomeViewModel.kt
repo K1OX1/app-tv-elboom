@@ -8,6 +8,7 @@ import cl.elboomlicanray.tvlauncher.data.repository.AppRepository
 import cl.elboomlicanray.tvlauncher.data.repository.HotelTvRepository
 import cl.elboomlicanray.tvlauncher.domain.model.AppItem
 import cl.elboomlicanray.tvlauncher.domain.model.QuickServiceItem
+import cl.elboomlicanray.tvlauncher.domain.model.ScreenStayState
 import cl.elboomlicanray.tvlauncher.domain.model.ServiceActionType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -387,6 +388,58 @@ class HomeViewModel @Inject constructor(
 
     fun dismissGuideDialog() {
         _uiState.update { it.copy(isGuideDialogVisible = false) }
+    }
+
+    /**
+     * Activa el modo Huésped / Limpio de inmediato si el huésped llega temprano a su cabaña.
+     * Guarda la confirmación en SharedPreferences para que jamás vuelva a mostrar la ficha de aseo.
+     */
+    fun activateGuestModeOrMarkClean() {
+        onUserInteraction()
+        val unit = preferencesHelper.getConfiguredUnit()
+        val nextGuest = _uiState.value.guestStay.nextGuestInfo
+        val guestName = nextGuest?.fullName ?: ""
+        if (guestName.isNotBlank()) {
+            preferencesHelper.setUnitGuestCheckedIn(unit.id, guestName, true)
+        }
+        preferencesHelper.setUnitForceClean(unit.id, true)
+
+        val firstName = if (guestName.isNotBlank()) {
+            guestName.trim().split("\\s+".toRegex()).firstOrNull() ?: "Estimado Huésped"
+        } else "Estimado Huésped"
+
+        _uiState.update { state ->
+            val updatedStay = state.guestStay.copy(
+                isOccupied = true,
+                screenState = ScreenStayState.IN_STAY,
+                title = "¡Bienvenido, $firstName!",
+                subtitle = "Alojamientos El Boom · ${guestName.ifBlank { unit.name }}",
+                guestFullName = guestName,
+                guestFirstName = firstName,
+                adultsCount = nextGuest?.adultsCount ?: state.guestStay.adultsCount,
+                childrenCount = nextGuest?.childrenCount ?: state.guestStay.childrenCount,
+                totalGuests = nextGuest?.totalGuests ?: state.guestStay.totalGuests,
+                checkinDate = "Hoy",
+                checkinOfficialTime = nextGuest?.checkinTime ?: "15:00 hrs",
+                checkoutDate = "Salida oficial 11:00 hrs",
+                stayProgress = "Llegada hoy",
+                balanceMessage = "Cuenta al día",
+                cleaningInfo = state.guestStay.cleaningInfo.copy(isDirty = false, status = "LIMPIA")
+            )
+            state.copy(guestStay = updatedStay)
+        }
+    }
+
+    fun isUnitForceClean(): Boolean {
+        val unit = preferencesHelper.getConfiguredUnit()
+        return preferencesHelper.isUnitForceClean(unit.id)
+    }
+
+    fun toggleUnitForceClean() {
+        val unit = preferencesHelper.getConfiguredUnit()
+        val current = preferencesHelper.isUnitForceClean(unit.id)
+        preferencesHelper.setUnitForceClean(unit.id, !current)
+        refreshHotelAndWeatherData()
     }
 
     fun isKioskPromptDismissed(): Boolean {

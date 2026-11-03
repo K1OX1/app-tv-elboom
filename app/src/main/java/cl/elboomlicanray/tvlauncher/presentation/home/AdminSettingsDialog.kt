@@ -92,6 +92,8 @@ fun AdminSettingsDialog(
     isSmartDnsEnabled: Boolean = false,
     smartDnsIp: String = "104.198.180.125",
     onToggleSmartDns: (Boolean) -> Unit = {},
+    isUnitForceClean: Boolean = false,
+    onToggleForceClean: () -> Unit = {},
     onOpenNetworkSettings: () -> Unit = {},
     isPinLockedOut: () -> Boolean = { false },
     getLockoutRemainingSeconds: () -> Int = { 0 },
@@ -481,20 +483,49 @@ fun AdminSettingsDialog(
                         ) {
                             when (activeAdminTab) {
                                 "unit" -> {
-                                    // PESTAÑA 1: SELECCIÓN DE CABAÑA (GRID 2 COLUMNAS)
-                                    LazyVerticalGrid(
-                                        columns = GridCells.Fixed(2),
-                                        modifier = Modifier.fillMaxSize(),
-                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                        contentPadding = PaddingValues(bottom = 8.dp)
-                                    ) {
-                                        items(OFFICIAL_ACCOMMODATION_UNITS) { unit ->
-                                            AdminUnitCard(
-                                                unit = unit,
-                                                isSelected = unit.id == selectedUnitId,
-                                                onSelect = { selectedUnitId = unit.id }
+                                    // PESTAÑA 1: SELECCIÓN DE CABAÑA Y ESTADO OPERATIVO
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Selecciona el alojamiento físico o cambia el estado de aseo para este televisor:",
+                                                fontSize = 13.sp,
+                                                color = TextMuted
                                             )
+                                            AdminSmallActionButton(
+                                                label = if (isUnitForceClean) "🟢 Alojamiento LIMPIO (Activo)" else "🧹 Marcar LIMPIO / Modo Huésped",
+                                                onClick = {
+                                                    onToggleForceClean()
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (isUnitForceClean) "Modo automático de aseo restaurado." else "¡Alojamiento marcado LIMPIO! Mostrando bienvenida al huésped.",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            )
+                                        }
+
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(2),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .weight(1f),
+                                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            contentPadding = PaddingValues(bottom = 8.dp)
+                                        ) {
+                                            items(OFFICIAL_ACCOMMODATION_UNITS) { unit ->
+                                                AdminUnitCard(
+                                                    unit = unit,
+                                                    isSelected = unit.id == selectedUnitId,
+                                                    onSelect = { selectedUnitId = unit.id }
+                                                )
+                                            }
                                         }
                                     }
                                 }

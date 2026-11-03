@@ -108,9 +108,68 @@ class HotelTvRepository @Inject constructor(
                         )
                     } else null
 
-                    val isCleaning = screenStr.equals("CLEANING", ignoreCase = true) ||
-                            (isDirty && !isOccupied)
-                    val isPrepared = screenStr.equals("PREPARED", ignoreCase = true)
+                    val isLocallyCheckedIn = if (nextGuestInfo != null && nextGuestInfo.fullName.isNotBlank()) {
+                        preferencesHelper.isUnitGuestCheckedIn(unit.id, nextGuestInfo.fullName)
+                    } else false
+                    val isLocallyClean = preferencesHelper.isUnitForceClean(unit.id)
+
+                    // El alojamiento se considera listo/limpio si el backend reporta LIMPIA, !isDirty, PREPARED, o si localmente se confirmó
+                    val isAlojamientoLimpio = !isDirty ||
+                            cleaningStatus.equals("LIMPIA", ignoreCase = true) ||
+                            screenStr.equals("PREPARED", ignoreCase = true) ||
+                            isLocallyClean ||
+                            isLocallyCheckedIn
+
+                    // Si hay un próximo huésped asignado para hoy y el alojamiento está limpio o el huésped ya está en cabaña:
+                    // ¡Mostrar directamente la pantalla de Bienvenida del Huésped, jamás la ficha de aseo!
+                    if (nextGuestInfo != null && nextGuestInfo.fullName.isNotBlank() && isAlojamientoLimpio && !isOccupied) {
+                        val firstName = nextGuestInfo.fullName.trim().split("\\s+".toRegex()).firstOrNull() ?: "Estimado Huésped"
+                        return@withContext Result.success(
+                            GuestStayInfo(
+                                isOccupied = true,
+                                screenState = ScreenStayState.IN_STAY,
+                                title = "¡Bienvenido, $firstName!",
+                                subtitle = "Alojamientos El Boom · ${nextGuestInfo.fullName}",
+                                orderId = "",
+                                guestFullName = nextGuestInfo.fullName,
+                                guestFirstName = firstName,
+                                guestPhone = "",
+                                guestEmail = "",
+                                guestOriginCity = "Chile",
+                                adultsCount = nextGuestInfo.adultsCount,
+                                childrenCount = nextGuestInfo.childrenCount,
+                                totalGuests = nextGuestInfo.totalGuests,
+                                bookingSource = "Directo Web El Boom",
+                                vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}",
+                                selectedBedsSummary = unit.bedsDescription,
+                                specialRequests = nextGuestInfo.specialRequests,
+                                checkinDate = "Hoy",
+                                checkoutDate = "Salida oficial 11:00 hrs",
+                                nights = 1,
+                                stayProgress = "Llegada hoy",
+                                totalAmount = 0L,
+                                prepaidAmount = 0L,
+                                balance = 0L,
+                                isPaid = true,
+                                balanceMessage = "Cuenta al día",
+                                isCheckoutDay = false,
+                                checkinOfficialTime = nextGuestInfo.checkinTime,
+                                checkoutOfficialTime = "11:00 hrs",
+                                rotationTime = "12:00 hrs",
+                                checkoutAlert = null,
+                                wifiNetwork = wifiNetwork,
+                                wifiPassword = wifiPass,
+                                wifiSpeedText = wifiSpeedText,
+                                cleaningInfo = cleaningInfo.copy(isDirty = false, status = "LIMPIA"),
+                                nextGuestInfo = nextGuestInfo,
+                                hostWhatsapp = hostWhatsapp,
+                                hostWhatsappFormatted = hostWhatsappFormatted
+                            )
+                        )
+                    }
+
+                    val isCleaning = (screenStr.equals("CLEANING", ignoreCase = true) || (isDirty && !isOccupied)) && !isAlojamientoLimpio
+                    val isPrepared = screenStr.equals("PREPARED", ignoreCase = true) && !isAlojamientoLimpio
 
                     if (isCleaning) {
                         return@withContext Result.success(

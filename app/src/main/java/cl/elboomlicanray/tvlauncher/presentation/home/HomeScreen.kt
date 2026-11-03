@@ -281,6 +281,9 @@ fun HomeScreen(
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(paymentUrl))
                                 context.startActivity(intent)
                             } catch (_: Exception) {}
+                        },
+                        onDismissCleaningOrWelcomeGuest = {
+                            viewModel.activateGuestModeOrMarkClean()
                         }
                     )
 
@@ -407,6 +410,8 @@ fun HomeScreen(
                 isSmartDnsEnabled = uiState.isSmartDnsEnabled,
                 smartDnsIp = uiState.smartDnsIp,
                 onToggleSmartDns = { enabled -> viewModel.toggleSmartDns(enabled) },
+                isUnitForceClean = viewModel.isUnitForceClean(),
+                onToggleForceClean = { viewModel.toggleUnitForceClean() },
                 onOpenNetworkSettings = { viewModel.openTvNetworkSettings() },
                 onCheckUpdateNow = {
                     coroutineScope.launch {

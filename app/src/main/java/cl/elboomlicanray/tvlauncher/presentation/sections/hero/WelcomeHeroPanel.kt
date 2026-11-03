@@ -55,7 +55,8 @@ fun WelcomeHeroPanel(
     cabinImageUrl: String? = null,
     selectedLanguage: String = "ES",
     modifier: Modifier = Modifier,
-    onPayBalance: () -> Unit = {}
+    onPayBalance: () -> Unit = {},
+    onDismissCleaningOrWelcomeGuest: () -> Unit = {}
 ) {
     val strings = remember(selectedLanguage) { AppStringsCatalog.get(selectedLanguage) }
 
@@ -167,27 +168,27 @@ fun WelcomeHeroPanel(
             val isStandby = guestStay.screenState == ScreenStayState.STANDBY
 
             val headerPrefix = when {
-                isCleaning -> "ALISTAMIENTO EN CURSO"
-                isPrepared -> "ALOJAMIENTO PREPARADO"
+                isCleaning -> "ALISTAMIENTO · CAMARERAS"
+                isPrepared -> strings.welcomePrefix
                 else -> strings.welcomePrefix
             }
 
             val headerPrefixColor = when {
                 isCleaning -> Color(0xFFF59E0B)
-                isPrepared -> Color(0xFF10B981)
+                isPrepared -> TvTokens.CyanNeon
                 else -> TvTokens.CyanNeon
             }
 
             val headerMainTitle = when {
-                isCleaning -> "Aseo pendiente"
-                isPrepared -> "Listo e impecable"
+                isCleaning -> "Aseo en proceso"
+                isPrepared -> if (guestStay.guestFirstName.isNotBlank()) "${guestStay.guestFirstName}!" else strings.guestFallback
                 isStandby -> "Alojamiento disponible"
                 else -> guestGreeting
             }
 
             val badgeText = when {
-                isCleaning -> "⚠️ ALOJAMIENTO PENDIENTE DE ASEO"
-                isPrepared -> "✓ PREPARADO · INGRESO 15:00"
+                isCleaning -> "FICHA DE ALISTAMIENTO DE ALOJAMIENTO"
+                isPrepared -> "✓ ALOJAMIENTO PREPARADO · BIENVENIDO"
                 isStandby -> "ALOJAMIENTO DISPONIBLE"
                 else -> strings.bookingConfirmed
             }
@@ -448,8 +449,88 @@ fun WelcomeHeroPanel(
                 }
             }
 
-            // BOTÓN DE ACCIÓN: PAGAR SALDO EN EL SITIO WEB
-            if (hasPendingBalance && !isCleaning && !isPrepared) {
+            // BOTÓN DE ACCIÓN RÁPIDA (PAGAR SALDO O ACTIVAR BIENVENIDA DE HUÉSPED)
+            if (isCleaning) {
+                val cleanActionInteractionSource = remember { MutableInteractionSource() }
+                val isCleanActionFocused by cleanActionInteractionSource.collectIsFocusedAsState()
+
+                val cleanScale by animateFloatAsState(
+                    targetValue = if (isCleanActionFocused) 1.03f else 1.0f,
+                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+                    label = "clean_scale"
+                )
+
+                val guestTargetName = guestStay.nextGuestInfo?.fullName?.trim()?.split("\\s+".toRegex())?.firstOrNull() ?: ""
+                val buttonLabel = if (guestTargetName.isNotBlank()) {
+                    "✨ Huésped en cabaña · Ver Bienvenida ($guestTargetName)"
+                } else {
+                    "✓ Marcar Aseo Terminado · Alojamiento Listo"
+                }
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                scaleX = cleanScale
+                                scaleY = cleanScale
+                            }
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (isCleanActionFocused) Color(0x6610B981) else Color(0x3310B981),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .border(
+                                width = if (isCleanActionFocused) 1.8.dp else 1.dp,
+                                color = if (isCleanActionFocused) Color(0xFF4ADE80) else Color(0xFF10B981).copy(alpha = 0.70f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .focusable(interactionSource = cleanActionInteractionSource)
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyUp && (keyEvent.key == Key.DirectionCenter || keyEvent.key == Key.Enter)) {
+                                    onDismissCleaningOrWelcomeGuest()
+                                    true
+                                } else false
+                            }
+                            .clickable(
+                                interactionSource = cleanActionInteractionSource,
+                                indication = null,
+                                onClick = onDismissCleaningOrWelcomeGuest
+                            )
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TvIcon(
+                                name = "check",
+                                size = 14.dp,
+                                color = if (isCleanActionFocused) Color(0xFF4ADE80) else Color.White
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = buttonLabel,
+                                color = Color.White,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        TvIcon(
+                            name = "chevron_right",
+                            size = 11.dp,
+                            color = Color(0xFF4ADE80)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "Presiona OK en el control si ya estás en tu alojamiento",
+                        color = TvTokens.TextMuted,
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            } else if (hasPendingBalance && !isPrepared) {
                 val payInteractionSource = remember { MutableInteractionSource() }
                 val isPayFocused by payInteractionSource.collectIsFocusedAsState()
 

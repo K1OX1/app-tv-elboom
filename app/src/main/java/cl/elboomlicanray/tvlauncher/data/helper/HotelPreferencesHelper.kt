@@ -329,4 +329,28 @@ class HotelPreferencesHelper @Inject constructor(
     fun setSmartDnsIp(ip: String) {
         prefs.edit().putString("smart_dns_ip", ip.trim()).apply()
     }
+
+    // =========================================================================
+    // ESTADO DE LIMPIEZA LOCAL Y CHECK-IN TEMPRANO DE HUÉSPED
+    // =========================================================================
+
+    fun isUnitGuestCheckedIn(unitId: Int, guestName: String): Boolean {
+        if (guestName.isBlank()) return false
+        val key = "guest_checked_in_${unitId}_${guestName.trim().lowercase().hashCode()}"
+        return prefs.getBoolean(key, false)
+    }
+
+    fun setUnitGuestCheckedIn(unitId: Int, guestName: String, checkedIn: Boolean) {
+        if (guestName.isBlank()) return
+        val key = "guest_checked_in_${unitId}_${guestName.trim().lowercase().hashCode()}"
+        prefs.edit().putBoolean(key, checkedIn).apply()
+    }
+
+    fun isUnitForceClean(unitId: Int): Boolean {
+        return prefs.getBoolean("unit_force_clean_$unitId", false)
+    }
+
+    fun setUnitForceClean(unitId: Int, forceClean: Boolean) {
+        prefs.edit().putBoolean("unit_force_clean_$unitId", forceClean).apply()
+    }
 }
