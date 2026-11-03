@@ -312,9 +312,9 @@ fun TouristGuideDialog(
                             )
                         }
 
-                        // Filtros horizontales elegantes sin cajas (estilo boutique)
+                        // Filtros horizontales elegantes con alto contraste al foco
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(26.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             filterCategories.forEach { (catKey, catLabel) ->
@@ -330,6 +330,27 @@ fun TouristGuideDialog(
                                             scaleX = scale
                                             scaleY = scale
                                         }
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            when {
+                                                isFocused -> Color(0xFF00E5FF)
+                                                isSelected -> Color(0x3300E5FF)
+                                                else -> Color.Transparent
+                                            }
+                                        )
+                                        .border(
+                                            width = when {
+                                                isFocused -> 2.dp
+                                                isSelected -> 1.dp
+                                                else -> 0.dp
+                                            },
+                                            color = when {
+                                                isFocused -> Color.White
+                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.70f)
+                                                else -> Color.Transparent
+                                            },
+                                            shape = RoundedCornerShape(50)
+                                        )
                                         .clickable(
                                             interactionSource = interactionSource,
                                             indication = null
@@ -337,29 +358,22 @@ fun TouristGuideDialog(
                                             selectedFilter = catKey
                                         }
                                         .focusable(interactionSource = interactionSource)
-                                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
                                 ) {
                                     Text(
                                         text = catLabel,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected || isFocused) FontWeight.SemiBold else FontWeight.Medium,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = when {
+                                            isFocused -> FontWeight.Black
+                                            isSelected -> FontWeight.Bold
+                                            else -> FontWeight.Medium
+                                        },
                                         letterSpacing = 0.8.sp,
                                         color = when {
-                                            isFocused -> Color(0xFF00E5FF)
+                                            isFocused -> Color(0xFF030712)
                                             isSelected -> Color.White
                                             else -> Color(0xFFBAC4D0)
                                         }
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    // Indicador turquesa fino bajo el filtro activo
-                                    Box(
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(2.2.dp)
-                                            .background(
-                                                color = if (isSelected) Color(0xFF00E5FF) else Color.Transparent,
-                                                shape = RoundedCornerShape(1.dp)
-                                            )
                                     )
                                 }
                             }
@@ -390,6 +404,15 @@ fun TouristGuideDialog(
                                         scaleX = scale
                                         scaleY = scale
                                     }
+                                    .clip(RoundedCornerShape(50))
+                                    .background(
+                                        if (closeFocused) Color.White else Color.Black.copy(alpha = 0.40f)
+                                    )
+                                    .border(
+                                        width = if (closeFocused) 2.dp else 1.dp,
+                                        color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
+                                        shape = RoundedCornerShape(50)
+                                    )
                                     .clickable(
                                         interactionSource = closeInteraction,
                                         indication = null
@@ -397,17 +420,17 @@ fun TouristGuideDialog(
                                         onDismiss()
                                     }
                                     .focusable(interactionSource = closeInteraction)
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
                                 CloseCanvasIcon(
-                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White,
+                                    color = if (closeFocused) Color(0xFF030712) else Color.White,
                                     modifier = Modifier.size(11.dp)
                                 )
                                 Text(
                                     text = strings.close,
                                     fontSize = 12.sp,
-                                    fontWeight = if (closeFocused) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White
+                                    fontWeight = if (closeFocused) FontWeight.ExtraBold else FontWeight.Medium,
+                                    color = if (closeFocused) Color(0xFF030712) else Color.White
                                 )
                             }
                         }
@@ -523,36 +546,40 @@ fun TouristGuideDialog(
 
                             Spacer(modifier = Modifier.height(2.dp))
 
-                            // 5. Botones de acción ("Ver video" principal y "Cómo llegar" secundaria)
+                            // 5. Botones de acción principales en fila unificada (Ver video, Enviar a mi WhatsApp, Cómo llegar)
                             val hasVideo = selectedAttraction.videoUrl.isNotBlank() || selectedAttraction.youtubeUrl.isNotBlank()
                             val gmapsUrl = selectedAttraction.googleMapsUrl.ifBlank {
                                 "https://maps.google.com/?q=${selectedAttraction.name.replace(" ", "+")}+Lican+Ray"
                             }
 
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 4.dp)
                             ) {
+                                // A. BOTÓN PRINCIPAL: "Ver video" (si el destino tiene video disponible)
                                 if (hasVideo) {
-                                    // Botón Principal: "Ver video" (turquesa)
                                     val videoInteraction = remember { MutableInteractionSource() }
                                     val videoFocused by videoInteraction.collectIsFocusedAsState()
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         modifier = Modifier
                                             .focusRequester(initialActionFocusRequester)
                                             .graphicsLayer {
-                                                val scale = if (videoFocused) 1.05f else 1.0f
+                                                val scale = if (videoFocused) 1.08f else 1.0f
                                                 scaleX = scale
                                                 scaleY = scale
                                             }
                                             .clip(RoundedCornerShape(50))
-                                            .background(Color(0xFFE50914))
+                                            .background(
+                                                if (videoFocused) Color(0xFFE50914)
+                                                else Color(0xCCB91C1C)
+                                            )
                                             .border(
-                                                width = if (videoFocused) 2.dp else 0.dp,
-                                                color = Color.White,
+                                                width = if (videoFocused) 2.5.dp else 1.dp,
+                                                color = if (videoFocused) Color.White else Color.White.copy(alpha = 0.40f),
                                                 shape = RoundedCornerShape(50)
                                             )
                                             .clickable(
@@ -568,11 +595,11 @@ fun TouristGuideDialog(
                                                 }
                                             }
                                             .focusable(interactionSource = videoInteraction)
-                                            .padding(horizontal = 20.dp, vertical = 9.dp)
+                                            .padding(horizontal = 20.dp, vertical = 10.dp)
                                     ) {
                                         PlayCanvasIcon(
                                             color = Color.White,
-                                            modifier = Modifier.size(11.dp)
+                                            modifier = Modifier.size(12.dp)
                                         )
                                         Text(
                                             text = strings.watchVideo,
@@ -581,115 +608,32 @@ fun TouristGuideDialog(
                                             color = Color.White
                                         )
                                     }
-
-                                    // Acción secundaria: "Cómo llegar" (enlace subrayado con flecha ↗)
-                                    val mapInteraction = remember { MutableInteractionSource() }
-                                    val mapFocused by mapInteraction.collectIsFocusedAsState()
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        modifier = Modifier
-                                            .graphicsLayer {
-                                                val scale = if (mapFocused) 1.06f else 1.0f
-                                                scaleX = scale
-                                                scaleY = scale
-                                            }
-                                            .clickable(
-                                                interactionSource = mapInteraction,
-                                                indication = null
-                                            ) {
-                                                openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
-                                            }
-                                            .focusable(interactionSource = mapInteraction)
-                                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = strings.howToGetThere,
-                                                fontSize = 13.5.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = if (mapFocused) Color(0xFF00E5FF) else Color.White
-                                            )
-                                            Spacer(modifier = Modifier.height(1.5.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(72.dp)
-                                                    .height(1.2.dp)
-                                                    .background(
-                                                        if (mapFocused) Color(0xFF00E5FF)
-                                                        else Color.White.copy(alpha = 0.85f)
-                                                    )
-                                            )
-                                        }
-                                        ArrowOutwardCanvasIcon(
-                                            color = if (mapFocused) Color(0xFF00E5FF) else Color.White,
-                                            modifier = Modifier.size(11.dp)
-                                        )
-                                    }
-                                } else {
-                                    // Si no hay video para un destino, "Cómo llegar" toma el protagonismo con estilo primario
-                                    val mapInteraction = remember { MutableInteractionSource() }
-                                    val mapFocused by mapInteraction.collectIsFocusedAsState()
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
-                                        modifier = Modifier
-                                            .focusRequester(initialActionFocusRequester)
-                                            .graphicsLayer {
-                                                val scale = if (mapFocused) 1.05f else 1.0f
-                                                scaleX = scale
-                                                scaleY = scale
-                                            }
-                                            .clip(RoundedCornerShape(50))
-                                            .background(Color(0xFF00E5FF))
-                                            .border(
-                                                width = if (mapFocused) 2.dp else 0.dp,
-                                                color = Color.White,
-                                                shape = RoundedCornerShape(50)
-                                            )
-                                            .clickable(
-                                                interactionSource = mapInteraction,
-                                                indication = null
-                                            ) {
-                                                openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
-                                            }
-                                            .focusable(interactionSource = mapInteraction)
-                                            .padding(horizontal = 20.dp, vertical = 9.dp)
-                                    ) {
-                                        Text(
-                                            text = strings.howToGetThere,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.Black
-                                        )
-                                        ArrowOutwardCanvasIcon(
-                                            color = Color.Black,
-                                            modifier = Modifier.size(11.dp)
-                                        )
-                                    }
                                 }
 
-                                // Botón "Enviar a mi WhatsApp" con soporte remoto y feedback
+                                // B. BOTÓN "Enviar a mi WhatsApp" (ÚNICO, ELEGANTE Y DE ALTO CONTRASTE)
                                 if (onSendAttractionToWhatsApp != null) {
                                     val waInteraction = remember { MutableInteractionSource() }
                                     val waFocused by waInteraction.collectIsFocusedAsState()
 
+                                    val focusModifier = if (!hasVideo) Modifier.focusRequester(initialActionFocusRequester) else Modifier
+
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
-                                        modifier = Modifier
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = focusModifier
                                             .graphicsLayer {
-                                                val scale = if (waFocused) 1.05f else 1.0f
+                                                val scale = if (waFocused) 1.08f else 1.0f
                                                 scaleX = scale
                                                 scaleY = scale
                                             }
                                             .clip(RoundedCornerShape(50))
-                                            .background(if (waFocused) Color(0xFF25D366) else Color(0x3325D366))
+                                            .background(
+                                                if (waFocused) Color(0xFF25D366)
+                                                else Color(0xCC052E16)
+                                            )
                                             .border(
-                                                width = if (waFocused) 2.dp else 1.dp,
-                                                color = if (waFocused) Color.White else Color(0xFF25D366).copy(alpha = 0.80f),
+                                                width = if (waFocused) 2.5.dp else 1.2.dp,
+                                                color = if (waFocused) Color.White else Color(0xFF25D366).copy(alpha = 0.85f),
                                                 shape = RoundedCornerShape(50)
                                             )
                                             .clickable(
@@ -710,33 +654,81 @@ fun TouristGuideDialog(
                                                                 context,
                                                                 err.message ?: "No se pudo enviar el mensaje a WhatsApp",
                                                                 Toast.LENGTH_LONG
-                                                            ).show()
+                                                             ).show()
                                                         }
                                                     }
                                                 }
                                             }
                                             .focusable(interactionSource = waInteraction)
-                                            .padding(horizontal = 16.dp, vertical = 9.dp)
+                                            .padding(horizontal = 20.dp, vertical = 10.dp)
                                     ) {
                                         WhatsAppCanvasIcon(
-                                            color = if (waFocused) Color.Black else Color(0xFF25D366),
-                                            modifier = Modifier.size(13.dp)
+                                            color = if (waFocused) Color(0xFF030712) else Color(0xFF25D366),
+                                            modifier = Modifier.size(15.dp)
                                         )
                                         Text(
                                             text = if (isSendingWhatsApp) strings.sendingToWhatsApp else strings.sendToWhatsApp,
-                                            fontSize = 12.5.sp,
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (waFocused) Color.Black else Color.White
+                                            color = if (waFocused) Color(0xFF030712) else Color.White
                                         )
                                     }
+                                }
+
+                                // C. BOTÓN "Cómo llegar" (ABRE GOOGLE MAPS)
+                                val mapInteraction = remember { MutableInteractionSource() }
+                                val mapFocused by mapInteraction.collectIsFocusedAsState()
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .graphicsLayer {
+                                            val scale = if (mapFocused) 1.08f else 1.0f
+                                            scaleX = scale
+                                            scaleY = scale
+                                        }
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (mapFocused) Color(0xFF00E5FF)
+                                            else Color(0xCC0D2030)
+                                        )
+                                        .border(
+                                            width = if (mapFocused) 2.5.dp else 1.2.dp,
+                                            color = if (mapFocused) Color.White else Color(0xFF00E5FF).copy(alpha = 0.70f),
+                                            shape = RoundedCornerShape(50)
+                                        )
+                                        .clickable(
+                                            interactionSource = mapInteraction,
+                                            indication = null
+                                        ) {
+                                            openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
+                                        }
+                                        .focusable(interactionSource = mapInteraction)
+                                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                                ) {
+                                    ArrowOutwardCanvasIcon(
+                                        color = if (mapFocused) Color(0xFF030712) else Color(0xFF00E5FF),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = strings.howToGetThere,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (mapFocused) Color(0xFF030712) else Color.White
+                                    )
                                 }
                             }
                         }
                     }
 
                     // ---------------------------------------------------------------------
-                    // FRANJA LOWER-MIDDLE: DATOS PRÁCTICOS (IZQUIERDA) + QR (DERECHA SOBRE HUA HUM)
+                    // FRANJA LOWER-MIDDLE: DATOS PRÁCTICOS + TARJETA ACCIÓN QR CELULAR
                     // ---------------------------------------------------------------------
+                    val gmapsUrl = selectedAttraction.googleMapsUrl.ifBlank {
+                        "https://maps.google.com/?q=${selectedAttraction.name.replace(" ", "+")}+Lican+Ray"
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -744,10 +736,16 @@ fun TouristGuideDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Fila compacta de Horario, Precio y Temporada (sin tarjetas pesadas, con divisores finos)
+                        // 1. Fila de Horario, Precio y Temporada (estilo refinado de 58dp)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier
+                                .height(58.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xD90A0F1D))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
+                                .padding(horizontal = 18.dp, vertical = 8.dp)
                         ) {
                             // Horario
                             Row(
@@ -755,8 +753,8 @@ fun TouristGuideDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 ClockCanvasIcon(
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(17.dp)
+                                    color = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Column {
                                     Text(
@@ -768,7 +766,7 @@ fun TouristGuideDialog(
                                     )
                                     Text(
                                         text = cleanHours(selectedAttraction.hours, strings),
-                                        fontSize = 11.5.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = Color.White
                                     )
@@ -789,8 +787,8 @@ fun TouristGuideDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 TagCanvasIcon(
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(17.dp)
+                                    color = Color(0xFFFBBF24),
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Column {
                                     Text(
@@ -802,7 +800,7 @@ fun TouristGuideDialog(
                                     )
                                     Text(
                                         text = cleanPrice(selectedAttraction.price, strings),
-                                        fontSize = 11.5.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = Color.White
                                     )
@@ -823,8 +821,8 @@ fun TouristGuideDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 CalendarCanvasIcon(
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(17.dp)
+                                    color = Color(0xFF34D399),
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Column {
                                     Text(
@@ -836,7 +834,7 @@ fun TouristGuideDialog(
                                     )
                                     Text(
                                         text = cleanSeason(selectedAttraction.season, strings),
-                                        fontSize = 11.5.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = Color.White
                                     )
@@ -844,52 +842,63 @@ fun TouristGuideDialog(
                             }
                         }
 
-                        // Tarjeta secundaria limpia con QR sobre la 6ta tarjeta (Hua Hum)
-                        val gmapsUrl = selectedAttraction.googleMapsUrl.ifBlank {
-                            "https://maps.google.com/?q=${selectedAttraction.name.replace(" ", "+")}+Lican+Ray"
-                        }
+                        // 2. Tarjeta QR elegante con la misma altura (58.dp) y foco interactivo
+                        val qrInteraction = remember { MutableInteractionSource() }
+                        val qrFocused by qrInteraction.collectIsFocusedAsState()
 
-                        Box(
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xD9131C28))
-                                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 9.dp)
+                                .height(58.dp)
+                                .graphicsLayer {
+                                    val scale = if (qrFocused) 1.05f else 1.0f
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (qrFocused) Color(0xEE132338) else Color(0xD90A0F1D))
+                                .border(
+                                    width = if (qrFocused) 2.dp else 1.dp,
+                                    color = if (qrFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.14f),
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                                .clickable(
+                                    interactionSource = qrInteraction,
+                                    indication = null
+                                ) {
+                                    openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
+                                }
+                                .focusable(interactionSource = qrInteraction)
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(11.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White)
+                                    .padding(2.dp)
                             ) {
-                                // Código QR de alto contraste generado dinámicamente desde el enlace real del destino
-                                Box(
-                                    modifier = Modifier
-                                        .size(60.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color.White)
-                                        .padding(3.dp)
-                                    ) {
-                                    QrCodeView(
-                                        content = gmapsUrl,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
+                                QrCodeView(
+                                    content = gmapsUrl,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
 
-                                Column {
-                                    Text(
-                                        text = strings.scanMapMobile,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Black,
-                                        letterSpacing = 0.5.sp,
-                                        lineHeight = 13.5.sp,
-                                        color = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = strings.scanForRoute,
-                                        fontSize = 8.8.sp,
-                                        color = Color(0xFF94A3B8)
-                                    )
-                                }
+                            Column {
+                                Text(
+                                    text = strings.scanMapMobile,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.4.sp,
+                                    color = if (qrFocused) Color(0xFF00E5FF) else Color.White
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = strings.scanForRoute,
+                                    fontSize = 8.5.sp,
+                                    color = Color(0xFF94A3B8)
+                                )
                             }
                         }
                     }
@@ -918,16 +927,17 @@ fun TouristGuideDialog(
                             val cardModifier = if (useEqualWeights) {
                                 Modifier.weight(1f)
                             } else {
-                                Modifier.width(136.dp)
+                                Modifier.width(140.dp)
                             }
 
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = cardModifier
                                     .graphicsLayer {
-                                        val scale = if (isFocused) 1.05f else 1.0f
+                                        val scale = if (isFocused) 1.10f else 1.0f
                                         scaleX = scale
                                         scaleY = scale
+                                        alpha = if (isFocused || isSelected) 1.0f else 0.68f
                                     }
                                     .clickable(
                                         interactionSource = itemInteraction,
@@ -937,7 +947,7 @@ fun TouristGuideDialog(
                                     }
                                     .focusable(interactionSource = itemInteraction)
                             ) {
-                                // Miniatura 16:9 con contorno turquesa fino al foco / selección
+                                // Miniatura 16:9 con contorno turquesa y glow inconfundible al foco
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -946,13 +956,13 @@ fun TouristGuideDialog(
                                         .background(Color(0xFF0F172A))
                                         .border(
                                             width = when {
-                                                isFocused -> 2.dp
-                                                isSelected -> 1.5.dp
-                                                else -> 0.6.dp
+                                                isFocused -> 3.5.dp
+                                                isSelected -> 2.dp
+                                                else -> 0.8.dp
                                             },
                                             color = when {
                                                 isFocused -> Color(0xFF00E5FF)
-                                                isSelected -> Color(0xFF00E5FF)
+                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.85f)
                                                 else -> Color.White.copy(alpha = 0.16f)
                                             },
                                             shape = RoundedCornerShape(8.dp)
@@ -966,31 +976,41 @@ fun TouristGuideDialog(
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(5.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
 
-                                // Nombre del destino simplificado para la franja
-                                Text(
-                                    text = getCarouselDisplayName(item.name),
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
-                                    color = when {
-                                        isFocused -> Color(0xFF00E5FF)
-                                        isSelected -> Color.White
-                                        else -> Color.White.copy(alpha = 0.70f)
-                                    },
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                // Nombre del destino: Insignia luminosa cyan al estar enfocado
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isFocused) Color(0xFF00E5FF) else Color.Transparent)
+                                        .padding(horizontal = if (isFocused) 8.dp else 2.dp, vertical = if (isFocused) 2.dp else 0.dp)
+                                ) {
+                                    Text(
+                                        text = getCarouselDisplayName(item.name),
+                                        fontSize = 11.sp,
+                                        fontWeight = when {
+                                            isFocused -> FontWeight.Black
+                                            isSelected -> FontWeight.Bold
+                                            else -> FontWeight.Medium
+                                        },
+                                        color = when {
+                                            isFocused -> Color(0xFF030712)
+                                            isSelected -> Color.White
+                                            else -> Color(0xFFBAC4D0)
+                                        },
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(3.dp))
 
-                                // Indicador turquesa discreto en el destino seleccionado
+                                // Indicador turquesa bajo el destino seleccionado
                                 Box(
                                     modifier = Modifier
-                                        .width(44.dp)
-                                        .height(2.2.dp)
+                                        .width(38.dp)
+                                        .height(2.5.dp)
                                         .background(
                                             color = if (isSelected) Color(0xFF00E5FF) else Color.Transparent,
                                             shape = RoundedCornerShape(1.dp)
