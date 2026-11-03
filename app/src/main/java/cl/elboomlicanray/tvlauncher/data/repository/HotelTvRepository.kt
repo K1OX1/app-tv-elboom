@@ -952,15 +952,26 @@ class HotelTvRepository @Inject constructor(
             val responseText = responseStream?.bufferedReader()?.use { it.readText() } ?: ""
 
             if (responseText.isNotBlank()) {
-                val json = JSONObject(responseText)
-                if (json.optBoolean("success", false)) {
-                    val guestName = json.optString("guestFirstName", "")
-                    val msg = json.optString("message", "Información enviada exitosamente a tu WhatsApp")
-                    val resultMsg = if (guestName.isNotBlank()) "¡Listo $guestName! Te enviamos los detalles a tu WhatsApp" else msg
-                    Result.success(resultMsg)
+                val contentType = connection.contentType ?: ""
+                val isJson = contentType.contains("application/json") || responseText.trim().startsWith("{")
+                
+                if (isJson) {
+                    val json = JSONObject(responseText)
+                    if (json.optBoolean("success", false)) {
+                        val guestName = json.optString("guestFirstName", "")
+                        val msg = json.optString("message", "Información enviada exitosamente a tu WhatsApp")
+                        val resultMsg = if (guestName.isNotBlank()) "¡Listo $guestName! Te enviamos los detalles a tu WhatsApp" else msg
+                        Result.success(resultMsg)
+                    } else {
+                        val err = json.optString("error", "No se pudo enviar el mensaje")
+                        Result.failure(Exception(err))
+                    }
                 } else {
-                    val err = json.optString("error", "No se pudo enviar el mensaje")
-                    Result.failure(Exception(err))
+                    if (statusCode == 404) {
+                        Result.failure(Exception("Servicio temporalmente no disponible (404). El servidor se está actualizando."))
+                    } else {
+                        Result.failure(Exception("Respuesta inesperada del servidor ($statusCode). Intenta de nuevo."))
+                    }
                 }
             } else {
                 Result.failure(Exception("Error en servidor ($statusCode)"))
