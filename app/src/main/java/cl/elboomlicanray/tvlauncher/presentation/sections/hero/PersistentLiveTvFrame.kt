@@ -3,8 +3,7 @@ package cl.elboomlicanray.tvlauncher.presentation.sections.hero
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,12 +68,23 @@ fun PersistentLiveTvFrame(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.025f else 1.0f,
+        targetValue = if (isFocused) 1.045f else 1.0f,
         animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = 420f
+            dampingRatio = 0.74f,
+            stiffness = 360f
         ),
         label = "tv_scale"
+    )
+
+    val livePulseTransition = rememberInfiniteTransition(label = "live_pulse")
+    val liveDotAlpha by livePulseTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "live_dot_alpha"
     )
 
     val tvChannels = remember {
@@ -225,21 +235,30 @@ fun PersistentLiveTvFrame(
                         drawRoundRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    TvTokens.CyanNeon.copy(alpha = 0.35f),
+                                    TvTokens.CyanNeon.copy(alpha = 0.40f),
+                                    TvTokens.CyanNeon.copy(alpha = 0.12f),
                                     Color.Transparent
                                 ),
                                 center = center,
-                                radius = size.maxDimension * 0.7f
+                                radius = size.maxDimension * 0.85f
                             ),
-                            cornerRadius = CornerRadius(22.dp.toPx(), 22.dp.toPx())
+                            cornerRadius = CornerRadius(24.dp.toPx(), 24.dp.toPx())
                         )
                     }
                 } else Modifier
             )
             .background(Color.Black, shape = frameShape)
             .border(
-                width = if (isFocused) 2.5.dp else 1.dp,
-                color = if (isFocused) TvTokens.CyanNeon else Color(0x33FFFFFF),
+                width = if (isFocused) 2.5.dp else 1.2.dp,
+                brush = if (isFocused) {
+                    Brush.verticalGradient(
+                        listOf(TvTokens.CyanNeon, TvTokens.CyanNeon.copy(alpha = 0.70f))
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.35f), Color.White.copy(alpha = 0.08f))
+                    )
+                },
                 shape = frameShape
             )
             .focusable(interactionSource = interactionSource)
@@ -318,7 +337,7 @@ fun PersistentLiveTvFrame(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(Color.White)
+                                .background(Color.White.copy(alpha = liveDotAlpha))
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(

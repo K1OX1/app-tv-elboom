@@ -1,7 +1,6 @@
 package cl.elboomlicanray.tvlauncher.presentation.sections.hero
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -91,11 +90,34 @@ fun WelcomeHeroPanel(
         strings.noPendingBalance
     }
 
+    val badgeTransition = rememberInfiniteTransition(label = "badge_pulse")
+    val badgeGlowAlpha by badgeTransition.animateFloat(
+        initialValue = 0.20f,
+        targetValue = 0.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "badge_alpha"
+    )
+
+    val heroShape = remember { RoundedCornerShape(22.dp) }
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(heroShape)
             .background(TvTokens.CardBackgroundRest)
-            .border(1.dp, TvTokens.GlassBorderStroke, RoundedCornerShape(20.dp))
+            .border(
+                1.5.dp,
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.35f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.05f)
+                    )
+                ),
+                heroShape
+            )
     ) {
         // 1. Fotografía real de cabaña alineada a la derecha
         val photoModel = if (!cabinImageUrl.isNullOrBlank() && !cabinImageUrl.contains("postimg.cc")) {
@@ -127,7 +149,24 @@ fun WelcomeHeroPanel(
                 )
         )
 
-        // 3. Contenido interior estructurado
+        // 3. Bisel especular de cristal Apple TV (Frosted glass sheen superior)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.05f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        // 4. Contenido interior estructurado
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -178,20 +217,24 @@ fun WelcomeHeroPanel(
                 }
             }
 
-            // ESTADO DE RESERVA
+            // ESTADO DE RESERVA CON PULSO AMBIENTAL APPLE TV
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (guestStay.isOccupied) Color(0x2610B981) else Color(0x2638BDF8)
+                        if (guestStay.isOccupied) {
+                            Color(0xFF10B981).copy(alpha = badgeGlowAlpha)
+                        } else {
+                            Color(0xFF38BDF8).copy(alpha = badgeGlowAlpha)
+                        }
                     )
                     .border(
-                        1.dp,
-                        if (guestStay.isOccupied) Color(0xFF10B981) else Color(0xFF38BDF8),
+                        1.2.dp,
+                        if (guestStay.isOccupied) Color(0xFF34D399).copy(alpha = 0.85f) else Color(0xFF38BDF8).copy(alpha = 0.85f),
                         RoundedCornerShape(50)
                     )
-                    .padding(horizontal = 10.dp, vertical = 3.5.dp)
+                    .padding(horizontal = 11.dp, vertical = 4.dp)
             ) {
                 Box(
                     modifier = Modifier

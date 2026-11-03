@@ -1,8 +1,8 @@
 {
-  "versionCode": 27,
-  "versionName": "1.0.26",
+  "versionCode": 28,
+  "versionName": "1.0.27",
   "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
   "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
-  "changelog": "Versión 1.0.26: Sincronización instantánea con Nobeds con token de seguridad por cabaña (1 a 6) y escaneo total de aplicaciones del TV Box.",
-  "sha256": "192294315C46B943636E5EAC94DB75299E1559817E067B4DBAC2120B647777C4"
+  "changelog": "Versión 1.0.27: Rediseño visual Apple TV tvOS con animaciones Spring Physics, 3D Tilt Parallax, bisel de cristal esmerilado, halo de luz 360 y fondo cinemático continuo.",
+  "sha256": "922FBEC55EC7027EA61C0D8F0C5E79EABA7D0B3624ED5A3BB332B5AE296A931F"
 }
