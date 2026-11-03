@@ -545,7 +545,7 @@ fun TouristGuideDialog(
                                                 scaleY = scale
                                             }
                                             .clip(RoundedCornerShape(50))
-                                            .background(Color(0xFF00E5FF))
+                                            .background(Color(0xFFE50914))
                                             .border(
                                                 width = if (videoFocused) 2.dp else 0.dp,
                                                 color = Color.White,
@@ -555,20 +555,26 @@ fun TouristGuideDialog(
                                                 interactionSource = videoInteraction,
                                                 indication = null
                                             ) {
-                                                isPlayingVideo = true
+                                                val videoUrl = selectedAttraction.videoUrl.ifBlank { selectedAttraction.youtubeUrl }
+                                                val ytId = extractYoutubeVideoId(videoUrl)
+                                                if (ytId != null) {
+                                                    launchYoutubeVideoTV(context, videoUrl)
+                                                } else {
+                                                    isPlayingVideo = true
+                                                }
                                             }
                                             .focusable(interactionSource = videoInteraction)
                                             .padding(horizontal = 20.dp, vertical = 9.dp)
                                     ) {
                                         PlayCanvasIcon(
-                                            color = Color.Black,
+                                            color = Color.White,
                                             modifier = Modifier.size(11.dp)
                                         )
                                         Text(
                                             text = strings.watchVideo,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color.Black
+                                            color = Color.White
                                         )
                                     }
 
@@ -1144,17 +1150,7 @@ private fun FullScreenVideoOverlay(
                             interactionSource = appInteraction,
                             indication = null
                         ) {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
-                                    setPackage("com.google.android.youtube.tv")
-                                }
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
-                                try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {}
-                            }
+                            launchYoutubeVideoTV(context, videoUrl)
                         }
                         .focusable(interactionSource = appInteraction)
                         .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -1290,6 +1286,28 @@ private fun openMapOrShowToast(context: Context, url: String, placeName: String)
             "Escanea el código QR en pantalla con tu móvil para iniciar la ruta a $placeName",
             Toast.LENGTH_LONG
         ).show()
+    }
+}
+
+/**
+ * Lanza el video directamente en la aplicación nativa de YouTube para Android TV (o navegador).
+ */
+private fun launchYoutubeVideoTV(context: Context, videoUrl: String) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
+            setPackage("com.google.android.youtube.tv")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        try {
+            val genericIntent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(genericIntent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "No se pudo abrir el reproductor de YouTube", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

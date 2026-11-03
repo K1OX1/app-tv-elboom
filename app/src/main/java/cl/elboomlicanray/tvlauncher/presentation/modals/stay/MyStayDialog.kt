@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -1400,6 +1401,7 @@ private fun VideoTourPanelView(
 ) {
     val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
     val youtubeUrl = "https://www.youtube.com/watch?v=$youtubeId"
+    val context = LocalContext.current
 
     Row(
         modifier = Modifier.fillMaxSize(),
@@ -1446,36 +1448,79 @@ private fun VideoTourPanelView(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .graphicsLayer {
-                        val scale = if (playFocused) 1.05f else 1.0f
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0xFF00E5FF))
-                    .border(
-                        width = if (playFocused) 2.dp else 0.dp,
-                        color = Color.White,
-                        shape = RoundedCornerShape(50)
-                    )
-                    .clickable(
-                        interactionSource = playInteraction,
-                        indication = null
-                    ) {
-                        onPlayFullscreen()
-                    }
-                    .focusable(interactionSource = playInteraction)
-                    .padding(horizontal = 22.dp, vertical = 10.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                PlayCanvasIcon(color = Color.Black, modifier = Modifier.size(12.dp))
-                Text(
-                    text = "▶ Ver Video Tour en Pantalla Completa",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
+                // Botón primario: Abrir directamente en la app oficial de YouTube TV (Opción 1 - Máximo rendimiento y sin errores)
+                val ytInteraction = remember { MutableInteractionSource() }
+                val ytFocused by ytInteraction.collectIsFocusedAsState()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val scale = if (ytFocused) 1.05f else 1.0f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (ytFocused) Color(0xFFDC2626) else Color(0xFFE50914))
+                        .border(
+                            width = if (ytFocused) 2.dp else 0.dp,
+                            color = Color.White,
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(
+                            interactionSource = ytInteraction,
+                            indication = null
+                        ) {
+                            launchYoutubeVideo(context, youtubeUrl)
+                        }
+                        .focusable(interactionSource = ytInteraction)
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                ) {
+                    PlayCanvasIcon(color = Color.White, modifier = Modifier.size(12.dp))
+                    Text(
+                        text = "▶ Reproducir en YouTube TV",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // Botón secundario: Reproductor interno
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val scale = if (playFocused) 1.05f else 1.0f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (playFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f))
+                        .border(
+                            width = if (playFocused) 2.dp else 1.dp,
+                            color = if (playFocused) Color.White else Color.White.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(
+                            interactionSource = playInteraction,
+                            indication = null
+                        ) {
+                            onPlayFullscreen()
+                        }
+                        .focusable(interactionSource = playInteraction)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "Pantalla Completa Interna",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (playFocused) Color.Black else Color.White
+                    )
+                }
             }
         }
 
@@ -1637,6 +1682,64 @@ private fun FullScreenVideoOverlay(
                     color = if (returnFocused) Color.Black else Color.White
                 )
             }
+
+            if (youtubeVideoId != null) {
+                val appInteraction = remember { MutableInteractionSource() }
+                val appFocused by appInteraction.collectIsFocusedAsState()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (appFocused) Color(0xFFDC2626)
+                            else Color.Black.copy(alpha = 0.65f)
+                        )
+                        .border(
+                            width = if (appFocused) 2.dp else 1.dp,
+                            color = if (appFocused) Color.White else Color.White.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(
+                            interactionSource = appInteraction,
+                            indication = null
+                        ) {
+                            launchYoutubeVideo(context, videoUrl)
+                        }
+                        .focusable(interactionSource = appInteraction)
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "▶ Abrir en App de YouTube TV",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Lanza el video directamente en la aplicación nativa de YouTube para Android TV (o navegador).
+ */
+private fun launchYoutubeVideo(context: Context, videoUrl: String) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
+            setPackage("com.google.android.youtube.tv")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        try {
+            val genericIntent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(genericIntent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "No se pudo abrir el reproductor de YouTube", Toast.LENGTH_SHORT).show()
         }
     }
 }
