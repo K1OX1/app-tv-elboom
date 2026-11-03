@@ -100,6 +100,7 @@ fun MyStayDialog(
     stay: GuestStayInfo,
     dynamicCabin: DynamicCabinDetails? = null,
     propertyInfo: DynamicPropertyInfo = DynamicPropertyInfo(),
+    selectedLanguage: String = "es",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current

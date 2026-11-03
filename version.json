@@ -1,8 +1,8 @@
 {
-  "versionCode": 29,
-  "versionName": "1.0.28",
-  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
-  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
-  "changelog": "Versión 1.0.28: Corrección del Error 153 en Video Tour de YouTube con plantilla HTML autorizada y optimización extrema de rendimiento Apple TV para TVs de bajo consumo.",
-  "sha256": "59999967D64627C95D06550C48E0B55EB4B18378CF407245584C7448590815F4"
+  "versionCode": 30,
+  "versionName": "1.0.29",
+  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.29/app-release.apk",
+  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.29/app-release.apk",
+  "changelog": "Restauración del diseño original de Mi Alojamiento (v1.0.29)",
+  "sha256": "4F9D916B316465348372C02FFDECEB5F233BF21826C9202A89B97B53A153C42F"
 }
