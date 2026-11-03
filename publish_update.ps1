@@ -76,11 +76,14 @@ if ($uploadResult -like "http*") {
 }
 
 # 4. Generar version.json
+$hash = (Get-FileHash -Path $apkPath -Algorithm SHA256).Hash.ToUpper()
 $versionData = @{
     versionCode = $newVersionCode
     versionName = $newVerName
     apkUrl = $apkUrl
+    downloadUrl = $apkUrl
     changelog = $Changelog
+    sha256 = $hash
 } | ConvertTo-Json -Compress
 
 $versionJsonFile = "$ProjectPath\version.json"
