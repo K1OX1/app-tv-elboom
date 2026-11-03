@@ -1,10 +1,10 @@
 package cl.elboomlicanray.tvlauncher.presentation.modals.apps
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -24,7 +24,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -36,6 +35,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,24 +52,13 @@ import androidx.tv.material3.Text
 import cl.elboomlicanray.tvlauncher.domain.model.AppItem
 import cl.elboomlicanray.tvlauncher.presentation.components.rememberNativeDrawablePainter
 import cl.elboomlicanray.tvlauncher.presentation.theme.TvTokens
-import kotlinx.coroutines.delay
 
 private const val APPS_PER_PAGE = 10
 private const val COLUMNS_PER_ROW = 5
 
 /**
- * Sección "Apps & Entretenimiento" rediseñada para Android TV 1080p.
- *
- * Características:
- * - Navegación direccional fluida y continua por D-Pad entre todas las aplicaciones.
- * - Al navegar con D-Pad hacia la derecha en la última app de la fila o página,
- *   avanza automáticamente a la siguiente fila o página.
- * - Al navegar con D-Pad hacia la izquierda en la primera app de la página,
- *   retrocede a la página anterior colocándose en la última app.
- * - Foco turquesa (#00E5FF) con ligero aumento de luminosidad y escala sutil.
- * - Cuadrícula compacta de 5 columnas x 2 filas (10 tiles apaisados por página).
- * - Icono / banner oficial de cada aplicación conservando sus colores y logos propios.
- * - Botones de paginación inferior opcionales y botón de cerrar accesibles por D-Pad.
+ * Sección "Apps & Entretenimiento" optimizada para máxima fluidez en Android TV
+ * y soporte completo de ordenamiento interactivo por D-Pad.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -78,14 +67,23 @@ fun StreamingAppsDialog(
     selectedLanguage: String = "ES",
     isSmartDnsEnabled: Boolean = false,
     onAppClick: (AppItem) -> Unit,
+    onReorderApps: (List<AppItem>) -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val strings = remember(selectedLanguage) {
         cl.elboomlicanray.tvlauncher.presentation.i18n.AppStringsCatalog.get(selectedLanguage)
     }
 
-    val totalPages = remember(apps) {
-        if (apps.isEmpty()) 1 else (apps.size + APPS_PER_PAGE - 1) / APPS_PER_PAGE
+    // Lista mutable reactiva para ordenamiento en vivo
+    var currentAppsList by remember(apps) { mutableStateOf(apps) }
+
+    // Estados de modo organización / reordenamiento
+    var isReorderMode by remember { mutableStateOf(false) }
+    var movingAppPackage by remember { mutableStateOf<String?>(null) }
+
+    val totalPages = remember(currentAppsList) {
+        if (currentAppsList.isEmpty()) 1 else (currentAppsList.size + APPS_PER_PAGE - 1) / APPS_PER_PAGE
     }
 
     var currentPage by remember { mutableIntStateOf(0) }
@@ -93,13 +91,14 @@ fun StreamingAppsDialog(
     var shouldApplyFocus by remember { mutableStateOf(false) }
 
     val appFocusRequesters = remember { List(APPS_PER_PAGE) { FocusRequester() } }
+    val organizeButtonFocusRequester = remember { FocusRequester() }
     val closeButtonFocusRequester = remember { FocusRequester() }
     val prevButtonFocusRequester = remember { FocusRequester() }
     val nextButtonFocusRequester = remember { FocusRequester() }
 
     var isVisible by remember { mutableStateOf(false) }
 
-    // Función para navegar entre páginas cambiando el foco al elemento adecuado
+    // Función para navegar entre páginas
     fun navigateToPage(newPage: Int, focusIndex: Int) {
         if (newPage in 0 until totalPages) {
             currentPage = newPage
@@ -108,19 +107,35 @@ fun StreamingAppsDialog(
         }
     }
 
-    // Asegurar que la página esté dentro de los límites si la lista de apps cambia
+    // Función de intercambio de posición con D-Pad en Modo Organizar
+    fun moveApp(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in currentAppsList.indices || toIndex !in currentAppsList.indices || fromIndex == toIndex) return
+        val updated = currentAppsList.toMutableList()
+        val item = updated.removeAt(fromIndex)
+        updated.add(toIndex, item)
+        currentAppsList = updated
+        onReorderApps(updated)
+
+        // Verificar si cruzó a otra página
+        val newPage = toIndex / APPS_PER_PAGE
+        val newFocusIdx = toIndex % APPS_PER_PAGE
+        currentPage = newPage
+        targetFocusIndex = newFocusIdx
+        shouldApplyFocus = true
+    }
+
+    // Asegurar límites de página si la lista cambia
     LaunchedEffect(totalPages) {
         if (currentPage >= totalPages) {
             currentPage = maxOf(0, totalPages - 1)
         }
     }
 
-    // Aplicar foco al cambiar de página
+    // Aplicar foco inmediato (sin demoras que causen lag)
     LaunchedEffect(currentPage, shouldApplyFocus) {
         if (shouldApplyFocus) {
-            delay(50)
             try {
-                val currentCount = minOf(APPS_PER_PAGE, maxOf(1, apps.size - currentPage * APPS_PER_PAGE))
+                val currentCount = minOf(APPS_PER_PAGE, maxOf(1, currentAppsList.size - currentPage * APPS_PER_PAGE))
                 val safeIndex = targetFocusIndex.coerceIn(0, currentCount - 1)
                 appFocusRequesters.getOrNull(safeIndex)?.requestFocus()
             } catch (_: Exception) {}
@@ -128,120 +143,190 @@ fun StreamingAppsDialog(
         }
     }
 
-    // Entrada animada y foco inicial en la primera app
+    // Entrada animada
     LaunchedEffect(Unit) {
         isVisible = true
-        delay(180)
         try {
             appFocusRequesters.firstOrNull()?.requestFocus()
         } catch (_: Exception) {}
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (isReorderMode) {
+                isReorderMode = false
+                movingAppPackage = null
+                onReorderApps(currentAppsList)
+            } else {
+                onDismiss()
+            }
+        },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true
         )
     ) {
         BackHandler {
-            onDismiss()
+            if (isReorderMode) {
+                isReorderMode = false
+                movingAppPackage = null
+                onReorderApps(currentAppsList)
+                Toast.makeText(context, "Orden de apps guardado", Toast.LENGTH_SHORT).show()
+            } else {
+                onDismiss()
+            }
         }
 
         AnimatedVisibility(
             visible = isVisible,
-            enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) +
-                    scaleIn(initialScale = 0.96f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 420f)),
-            exit = fadeOut(tween(100)) + scaleOut(targetScale = 0.96f)
+            enter = fadeIn(tween(140, easing = FastOutSlowInEasing)) +
+                    scaleIn(initialScale = 0.97f, animationSpec = tween(140, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(90)) + scaleOut(targetScale = 0.97f)
         ) {
+            // Fondo con degradado vertical ultra-eficiente en GPU
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.radialGradient(
+                        Brush.verticalGradient(
                             colors = listOf(
                                 Color(0xFF091428),
                                 Color(0xFF050B18),
-                                Color(0xFF030712)
-                            ),
-                            radius = 1600f
+                                Color(0xFF020612)
+                            )
                         )
                     )
-                    .padding(horizontal = 48.dp, vertical = 24.dp)
+                    .padding(horizontal = 48.dp, vertical = 22.dp)
             ) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     // =========================================================================
-                    // 1. ENCABEZADO COMPACTO: TÍTULO, SUBTÍTULO Y BOTÓN CERRAR
+                    // 1. ENCABEZADO: TÍTULO, SUBTÍTULO, BOTÓN ORGANIZAR Y BOTÓN CERRAR
                     // =========================================================================
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = strings.streamingDialogTitle,
-                                style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 27.sp
-                                ),
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Text(
-                                text = strings.streamingDialogSubtitle,
-                                fontSize = 13.sp,
-                                color = Color(0xFF94A3B8)
-                            )
-                        }
-
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (isSmartDnsEnabled) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF10B981).copy(alpha = 0.2f))
-                                        .border(1.dp, Color(0xFF10B981).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "🇺🇸 Netflix USA Activo",
-                                        fontSize = 12.sp,
+                            Column {
+                                Text(
+                                    text = strings.streamingDialogTitle,
+                                    style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF4ADE80)
-                                    )
-                                }
+                                        fontSize = 26.sp
+                                    ),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = strings.streamingDialogSubtitle,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF94A3B8)
+                                )
                             }
 
-                            // Botón "✕ Cerrar"
-                            CloseModalPillButton(
-                                focusRequester = closeButtonFocusRequester,
-                                label = strings.close,
-                                onDown = {
-                                    val safeCount = minOf(APPS_PER_PAGE, maxOf(1, apps.size - currentPage * APPS_PER_PAGE))
-                                    val targetIndex = minOf(COLUMNS_PER_ROW - 1, safeCount - 1)
-                                    try {
-                                        appFocusRequesters[targetIndex].requestFocus()
-                                    } catch (_: Exception) {}
-                                },
-                                onClick = onDismiss
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                if (isSmartDnsEnabled) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF10B981).copy(alpha = 0.2f))
+                                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                                    ) {
+                                        Text(
+                                            text = "🇺🇸 Netflix USA Activo",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF4ADE80)
+                                        )
+                                    }
+                                }
+
+                                // Botón "⇅ Organizar" / "✓ Listo"
+                                OrganizeModePillButton(
+                                    isReorderMode = isReorderMode,
+                                    focusRequester = organizeButtonFocusRequester,
+                                    onRight = { closeButtonFocusRequester.requestFocus(); true },
+                                    onDown = {
+                                        val safeCount = minOf(APPS_PER_PAGE, maxOf(1, currentAppsList.size - currentPage * APPS_PER_PAGE))
+                                        val targetIndex = minOf(1, safeCount - 1)
+                                        try { appFocusRequesters[targetIndex].requestFocus() } catch (_: Exception) {}
+                                    },
+                                    onClick = {
+                                        if (isReorderMode) {
+                                            isReorderMode = false
+                                            movingAppPackage = null
+                                            onReorderApps(currentAppsList)
+                                            Toast.makeText(context, "Orden de apps guardado", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            isReorderMode = true
+                                            movingAppPackage = null
+                                            try { appFocusRequesters[0].requestFocus() } catch (_: Exception) {}
+                                        }
+                                    }
+                                )
+
+                                // Botón "✕ Cerrar"
+                                CloseModalPillButton(
+                                    focusRequester = closeButtonFocusRequester,
+                                    label = strings.close,
+                                    onLeft = { organizeButtonFocusRequester.requestFocus(); true },
+                                    onDown = {
+                                        val safeCount = minOf(APPS_PER_PAGE, maxOf(1, currentAppsList.size - currentPage * APPS_PER_PAGE))
+                                        val targetIndex = minOf(COLUMNS_PER_ROW - 1, safeCount - 1)
+                                        try { appFocusRequesters[targetIndex].requestFocus() } catch (_: Exception) {}
+                                    },
+                                    onClick = {
+                                        if (isReorderMode) {
+                                            isReorderMode = false
+                                            movingAppPackage = null
+                                            onReorderApps(currentAppsList)
+                                        }
+                                        onDismiss()
+                                    }
+                                )
+                            }
+                        }
+
+                        // Banner de instrucción cuando el modo organizar está activo
+                        if (isReorderMode) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(TvTokens.CyanNeon.copy(alpha = 0.14f))
+                                    .border(1.dp, TvTokens.CyanNeon.copy(alpha = 0.50f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = if (movingAppPackage != null) {
+                                        "Moviendo app: Usa las flechas ◀ ▶ ▲ ▼ del control para reubicarla. Presiona OK para fijar posición."
+                                    } else {
+                                        "Modo Organizar: Presiona OK sobre una app para comenzar a moverla con las flechas, o '✓ Listo' para guardar."
+                                    },
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
 
                     // =========================================================================
                     // 2. CUADRÍCULA COMPACTA DE 5 COLUMNAS X 2 FILAS (10 TILES POR PÁGINA)
                     // =========================================================================
-                    val pageApps = remember(apps, currentPage) {
-                        apps.drop(currentPage * APPS_PER_PAGE).take(APPS_PER_PAGE)
+                    val pageApps = remember(currentAppsList, currentPage) {
+                        currentAppsList.drop(currentPage * APPS_PER_PAGE).take(APPS_PER_PAGE)
                     }
 
                     val row1Apps = remember(pageApps) { pageApps.take(COLUMNS_PER_ROW) }
@@ -251,7 +336,7 @@ fun StreamingAppsDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f, fill = false),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         // FILA 1 (Índices 0..4)
@@ -262,59 +347,100 @@ fun StreamingAppsDialog(
                         ) {
                             row1Apps.forEachIndexed { colIndex, app ->
                                 val overallIndex = colIndex
+                                val isMovingThis = isReorderMode && movingAppPackage == app.packageName
+
                                 AppLandscapeTile(
                                     app = app,
+                                    isReorderMode = isReorderMode,
+                                    isBeingMoved = isMovingThis,
                                     focusRequester = appFocusRequesters[overallIndex],
-                                    onClick = { onAppClick(app) },
-                                    onDirectionRight = {
-                                        if (overallIndex < pageApps.size - 1) {
-                                            appFocusRequesters[overallIndex + 1].requestFocus()
-                                            true
-                                        } else if (currentPage < totalPages - 1) {
-                                            navigateToPage(currentPage + 1, focusIndex = 0)
-                                            true
+                                    onClick = {
+                                        if (isReorderMode) {
+                                            movingAppPackage = if (isMovingThis) null else app.packageName
                                         } else {
-                                            false
+                                            onAppClick(app)
+                                        }
+                                    },
+                                    onDirectionRight = {
+                                        if (isMovingThis) {
+                                            val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                            if (currentIdx < currentAppsList.size - 1) {
+                                                moveApp(currentIdx, currentIdx + 1)
+                                                true
+                                            } else false
+                                        } else {
+                                            if (overallIndex < pageApps.size - 1) {
+                                                appFocusRequesters[overallIndex + 1].requestFocus()
+                                                true
+                                            } else if (currentPage < totalPages - 1) {
+                                                navigateToPage(currentPage + 1, focusIndex = 0)
+                                                true
+                                            } else false
                                         }
                                     },
                                     onDirectionLeft = {
-                                        if (overallIndex > 0) {
-                                            appFocusRequesters[overallIndex - 1].requestFocus()
-                                            true
-                                        } else if (currentPage > 0) {
-                                            val prevCount = minOf(APPS_PER_PAGE, apps.size - (currentPage - 1) * APPS_PER_PAGE)
-                                            navigateToPage(currentPage - 1, focusIndex = prevCount - 1)
-                                            true
+                                        if (isMovingThis) {
+                                            val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                            if (currentIdx > 0) {
+                                                moveApp(currentIdx, currentIdx - 1)
+                                                true
+                                            } else false
                                         } else {
-                                            false
+                                            if (overallIndex > 0) {
+                                                appFocusRequesters[overallIndex - 1].requestFocus()
+                                                true
+                                            } else if (currentPage > 0) {
+                                                val prevCount = minOf(APPS_PER_PAGE, currentAppsList.size - (currentPage - 1) * APPS_PER_PAGE)
+                                                navigateToPage(currentPage - 1, focusIndex = prevCount - 1)
+                                                true
+                                            } else false
                                         }
                                     },
                                     onDirectionUp = {
-                                        closeButtonFocusRequester.requestFocus()
-                                        true
-                                    },
-                                    onDirectionDown = {
-                                        val targetIndex = overallIndex + COLUMNS_PER_ROW
-                                        if (targetIndex < pageApps.size) {
-                                            appFocusRequesters[targetIndex].requestFocus()
-                                            true
-                                        } else if (pageApps.size > COLUMNS_PER_ROW) {
-                                            appFocusRequesters[pageApps.size - 1].requestFocus()
-                                            true
-                                        } else if (totalPages > 1) {
-                                            if (currentPage < totalPages - 1) {
-                                                nextButtonFocusRequester.requestFocus()
+                                        if (isMovingThis) {
+                                            val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                            val targetIdx = maxOf(0, currentIdx - COLUMNS_PER_ROW)
+                                            if (targetIdx != currentIdx) {
+                                                moveApp(currentIdx, targetIdx)
+                                                true
+                                            } else false
+                                        } else {
+                                            if (colIndex < 3) {
+                                                organizeButtonFocusRequester.requestFocus()
                                             } else {
-                                                prevButtonFocusRequester.requestFocus()
+                                                closeButtonFocusRequester.requestFocus()
                                             }
                                             true
+                                        }
+                                    },
+                                    onDirectionDown = {
+                                        if (isMovingThis) {
+                                            val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                            val targetIdx = minOf(currentAppsList.size - 1, currentIdx + COLUMNS_PER_ROW)
+                                            if (targetIdx != currentIdx) {
+                                                moveApp(currentIdx, targetIdx)
+                                                true
+                                            } else false
                                         } else {
-                                            false
+                                            val targetIndex = overallIndex + COLUMNS_PER_ROW
+                                            if (targetIndex < pageApps.size) {
+                                                appFocusRequesters[targetIndex].requestFocus()
+                                                true
+                                            } else if (pageApps.size > COLUMNS_PER_ROW) {
+                                                appFocusRequesters[pageApps.size - 1].requestFocus()
+                                                true
+                                            } else if (totalPages > 1) {
+                                                if (currentPage < totalPages - 1) {
+                                                    nextButtonFocusRequester.requestFocus()
+                                                } else {
+                                                    prevButtonFocusRequester.requestFocus()
+                                                }
+                                                true
+                                            } else false
                                         }
                                     }
                                 )
                             }
-                            // Si la fila 1 tiene menos de 5 apps, rellenar espacios vacíos
                             val missingRow1 = COLUMNS_PER_ROW - row1Apps.size
                             repeat(missingRow1) {
                                 Spacer(modifier = Modifier.width(160.dp))
@@ -330,50 +456,88 @@ fun StreamingAppsDialog(
                             ) {
                                 row2Apps.forEachIndexed { colIndex, app ->
                                     val overallIndex = COLUMNS_PER_ROW + colIndex
+                                    val isMovingThis = isReorderMode && movingAppPackage == app.packageName
+
                                     AppLandscapeTile(
                                         app = app,
+                                        isReorderMode = isReorderMode,
+                                        isBeingMoved = isMovingThis,
                                         focusRequester = appFocusRequesters[overallIndex],
-                                        onClick = { onAppClick(app) },
-                                        onDirectionRight = {
-                                            if (overallIndex < pageApps.size - 1) {
-                                                appFocusRequesters[overallIndex + 1].requestFocus()
-                                                true
-                                            } else if (currentPage < totalPages - 1) {
-                                                navigateToPage(currentPage + 1, focusIndex = 0)
-                                                true
+                                        onClick = {
+                                            if (isReorderMode) {
+                                                movingAppPackage = if (isMovingThis) null else app.packageName
                                             } else {
-                                                false
+                                                onAppClick(app)
+                                            }
+                                        },
+                                        onDirectionRight = {
+                                            if (isMovingThis) {
+                                                val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                                if (currentIdx < currentAppsList.size - 1) {
+                                                    moveApp(currentIdx, currentIdx + 1)
+                                                    true
+                                                } else false
+                                            } else {
+                                                if (overallIndex < pageApps.size - 1) {
+                                                    appFocusRequesters[overallIndex + 1].requestFocus()
+                                                    true
+                                                } else if (currentPage < totalPages - 1) {
+                                                    navigateToPage(currentPage + 1, focusIndex = 0)
+                                                    true
+                                                } else false
                                             }
                                         },
                                         onDirectionLeft = {
-                                            if (overallIndex > 0) {
-                                                appFocusRequesters[overallIndex - 1].requestFocus()
-                                                true
-                                            } else if (currentPage > 0) {
-                                                val prevCount = minOf(APPS_PER_PAGE, apps.size - (currentPage - 1) * APPS_PER_PAGE)
-                                                navigateToPage(currentPage - 1, focusIndex = prevCount - 1)
-                                                true
+                                            if (isMovingThis) {
+                                                val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                                if (currentIdx > 0) {
+                                                    moveApp(currentIdx, currentIdx - 1)
+                                                    true
+                                                } else false
                                             } else {
-                                                false
+                                                if (overallIndex > 0) {
+                                                    appFocusRequesters[overallIndex - 1].requestFocus()
+                                                    true
+                                                } else if (currentPage > 0) {
+                                                    val prevCount = minOf(APPS_PER_PAGE, currentAppsList.size - (currentPage - 1) * APPS_PER_PAGE)
+                                                    navigateToPage(currentPage - 1, focusIndex = prevCount - 1)
+                                                    true
+                                                } else false
                                             }
                                         },
                                         onDirectionUp = {
-                                            val targetIndex = overallIndex - COLUMNS_PER_ROW
-                                            appFocusRequesters[targetIndex].requestFocus()
-                                            true
+                                            if (isMovingThis) {
+                                                val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                                val targetIdx = maxOf(0, currentIdx - COLUMNS_PER_ROW)
+                                                if (targetIdx != currentIdx) {
+                                                    moveApp(currentIdx, targetIdx)
+                                                    true
+                                                } else false
+                                            } else {
+                                                val targetIndex = overallIndex - COLUMNS_PER_ROW
+                                                appFocusRequesters[targetIndex].requestFocus()
+                                                true
+                                            }
                                         },
                                         onDirectionDown = {
-                                            if (totalPages > 1) {
-                                                if (colIndex >= (COLUMNS_PER_ROW / 2) && currentPage < totalPages - 1) {
-                                                    nextButtonFocusRequester.requestFocus()
-                                                } else if (currentPage > 0) {
-                                                    prevButtonFocusRequester.requestFocus()
-                                                } else {
-                                                    nextButtonFocusRequester.requestFocus()
-                                                }
-                                                true
+                                            if (isMovingThis) {
+                                                val currentIdx = currentAppsList.indexOfFirst { it.packageName == app.packageName }
+                                                val targetIdx = minOf(currentAppsList.size - 1, currentIdx + COLUMNS_PER_ROW)
+                                                if (targetIdx != currentIdx) {
+                                                    moveApp(currentIdx, targetIdx)
+                                                    true
+                                                } else false
                                             } else {
-                                                false
+                                                if (totalPages > 1) {
+                                                    if (colIndex >= (COLUMNS_PER_ROW / 2) && currentPage < totalPages - 1) {
+                                                        nextButtonFocusRequester.requestFocus()
+                                                    } else if (currentPage > 0) {
+                                                        prevButtonFocusRequester.requestFocus()
+                                                    } else {
+                                                        nextButtonFocusRequester.requestFocus()
+                                                    }
+                                                    true
+                                                } else false
                                             }
                                         }
                                     )
@@ -384,7 +548,6 @@ fun StreamingAppsDialog(
                                 }
                             }
                         } else {
-                            // Espacio reservado para balancear la cuadrícula si sólo hay 1 fila
                             Spacer(modifier = Modifier.height(138.dp))
                         }
                     }
@@ -396,11 +559,10 @@ fun StreamingAppsDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 10.dp, bottom = 4.dp),
+                                .padding(top = 8.dp, bottom = 4.dp),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Botón Anterior "<"
                             PaginationCircleButton(
                                 iconText = "‹",
                                 enabled = currentPage > 0,
@@ -409,16 +571,12 @@ fun StreamingAppsDialog(
                                     if (currentPage < totalPages - 1) {
                                         nextButtonFocusRequester.requestFocus()
                                         true
-                                    } else {
-                                        false
-                                    }
+                                    } else false
                                 },
                                 onDirectionUp = {
                                     val targetIndex = if (pageApps.size > COLUMNS_PER_ROW) {
                                         minOf(COLUMNS_PER_ROW + 1, pageApps.size - 1)
-                                    } else {
-                                        0
-                                    }
+                                    } else 0
                                     appFocusRequesters[targetIndex].requestFocus()
                                     true
                                 },
@@ -429,14 +587,12 @@ fun StreamingAppsDialog(
                                 }
                             )
 
-                            Spacer(modifier = Modifier.width(22.dp))
+                            Spacer(modifier = Modifier.width(20.dp))
 
-                            // Indicador Central: Puntos + "1 / 3" + "Más aplicaciones"
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                // Fila de puntos
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -445,7 +601,7 @@ fun StreamingAppsDialog(
                                         val isCurrent = p == currentPage
                                         Box(
                                             modifier = Modifier
-                                                .size(if (isCurrent) 8.dp else 6.dp)
+                                                .size(if (isCurrent) 8.dp else 5.dp)
                                                 .clip(CircleShape)
                                                 .background(
                                                     if (isCurrent) TvTokens.CyanNeon
@@ -455,27 +611,18 @@ fun StreamingAppsDialog(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(5.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
                                 Text(
                                     text = "${currentPage + 1} / $totalPages",
-                                    fontSize = 13.sp,
+                                    fontSize = 12.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color.White
                                 )
-
-                                Spacer(modifier = Modifier.height(1.dp))
-
-                                Text(
-                                    text = "Más aplicaciones",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF94A3B8)
-                                )
                             }
 
-                            Spacer(modifier = Modifier.width(22.dp))
+                            Spacer(modifier = Modifier.width(20.dp))
 
-                            // Botón Siguiente ">"
                             PaginationCircleButton(
                                 iconText = "›",
                                 enabled = currentPage < totalPages - 1,
@@ -484,16 +631,10 @@ fun StreamingAppsDialog(
                                     if (currentPage > 0) {
                                         prevButtonFocusRequester.requestFocus()
                                         true
-                                    } else {
-                                        false
-                                    }
+                                    } else false
                                 },
                                 onDirectionUp = {
-                                    val targetIndex = if (pageApps.size > COLUMNS_PER_ROW) {
-                                        pageApps.size - 1
-                                    } else {
-                                        pageApps.size - 1
-                                    }
+                                    val targetIndex = pageApps.size - 1
                                     appFocusRequesters[targetIndex].requestFocus()
                                     true
                                 },
@@ -505,8 +646,7 @@ fun StreamingAppsDialog(
                             )
                         }
                     } else {
-                        // Espacio inferior equilibrado si no hay paginación
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                     }
                 }
             }
@@ -515,11 +655,14 @@ fun StreamingAppsDialog(
 }
 
 /**
- * Tile individual apaisado de la cuadrícula de aplicaciones con soporte D-Pad nativo.
+ * Tile individual apaisado de la cuadrícula de aplicaciones.
+ * Optimizado a 60 FPS con texturas aceleradas por GPU y soporte de reordenamiento D-Pad.
  */
 @Composable
 private fun AppLandscapeTile(
     app: AppItem,
+    isReorderMode: Boolean,
+    isBeingMoved: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
     onDirectionRight: () -> Boolean,
@@ -533,9 +676,14 @@ private fun AppLandscapeTile(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
+    // Animación ultra-ligera y nítida de escala (110ms)
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.04f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+        targetValue = when {
+            isBeingMoved -> 1.08f
+            isFocused -> 1.05f
+            else -> 1.0f
+        },
+        animationSpec = tween(110, easing = FastOutSlowInEasing),
         label = "tile_scale"
     )
 
@@ -564,9 +712,7 @@ private fun AppLandscapeTile(
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> true
                         else -> false
                     }
-                } else {
-                    false
-                }
+                } else false
             }
             .graphicsLayer {
                 scaleX = scale
@@ -579,25 +725,32 @@ private fun AppLandscapeTile(
                 onClick = onClick
             )
     ) {
+        val borderColor = when {
+            isBeingMoved -> TvTokens.CyanNeon
+            isFocused -> TvTokens.CyanNeon
+            isReorderMode -> TvTokens.CyanNeon.copy(alpha = 0.35f)
+            else -> Color.White.copy(alpha = 0.12f)
+        }
+
+        val borderWidth = when {
+            isBeingMoved -> 3.dp
+            isFocused -> 2.5.dp
+            else -> 1.dp
+        }
+
+        val containerBg = when {
+            isBeingMoved -> Color(0xFF1E3A5F)
+            isFocused -> Color(0xFF1B2C48)
+            else -> Color(0xFF131F33)
+        }
+
         // Cápsula apaisada
         Box(
             modifier = Modifier
                 .width(tileWidth)
                 .height(tileHeight)
-                .shadow(
-                    elevation = if (isFocused) 14.dp else 2.dp,
-                    shape = shape,
-                    spotColor = if (isFocused) TvTokens.CyanNeon.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.5f)
-                )
-                .background(
-                    color = if (isFocused) Color(0xFF1B2C48) else Color(0xFF131F33),
-                    shape = shape
-                )
-                .border(
-                    width = if (isFocused) 2.5.dp else 1.dp,
-                    color = if (isFocused) TvTokens.CyanNeon else Color.White.copy(alpha = 0.12f),
-                    shape = shape
-                ),
+                .background(containerBg, shape)
+                .border(borderWidth, borderColor, shape),
             contentAlignment = Alignment.Center
         ) {
             Box(
@@ -606,14 +759,11 @@ private fun AppLandscapeTile(
                     .clip(shape),
                 contentAlignment = Alignment.Center
             ) {
-                val bannerPainter = rememberNativeDrawablePainter(app.bannerDrawable)
-                val iconPainter = rememberNativeDrawablePainter(app.iconDrawable)
-
+                // PRIORIDAD 1: Bitmaps de hardware (GPU Textures) directas sin pasadas CPU
                 when {
-                    // 1. BANNER OFICIAL 16:9 DE ANDROID TV
-                    bannerPainter != null -> {
+                    app.bannerBitmap != null -> {
                         Image(
-                            painter = bannerPainter,
+                            bitmap = app.bannerBitmap,
                             contentDescription = app.name,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -622,17 +772,60 @@ private fun AppLandscapeTile(
                         )
                     }
 
-                    // 2. ÍCONO OFICIAL CENTRADO (54DP) CONSERVA SUS COLORES
-                    iconPainter != null -> {
+                    app.iconBitmap != null -> {
                         Image(
-                            painter = iconPainter,
+                            bitmap = app.iconBitmap,
                             contentDescription = app.name,
                             modifier = Modifier.size(54.dp),
                             contentScale = ContentScale.Fit
                         )
                     }
 
-                    // 3. FALLBACK DE TEXTO
+                    // PRIORIDAD 2: Painter fallback si el bitmap no estuviera presente
+                    app.bannerDrawable != null -> {
+                        val bannerPainter = rememberNativeDrawablePainter(app.bannerDrawable)
+                        if (bannerPainter != null) {
+                            Image(
+                                painter = bannerPainter,
+                                contentDescription = app.name,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(shape),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Text(
+                                text = app.name,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                        }
+                    }
+
+                    app.iconDrawable != null -> {
+                        val iconPainter = rememberNativeDrawablePainter(app.iconDrawable)
+                        if (iconPainter != null) {
+                            Image(
+                                painter = iconPainter,
+                                contentDescription = app.name,
+                                modifier = Modifier.size(54.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Text(
+                                text = app.name,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                        }
+                    }
+
                     else -> {
                         Text(
                             text = app.name,
@@ -645,11 +838,30 @@ private fun AppLandscapeTile(
                     }
                 }
             }
+
+            // Indicador flotante cuando la app está en modo "Moviendo"
+            if (isBeingMoved) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TvTokens.CyanNeon)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "◀ MOVIENDO ▶",
+                        color = Color(0xFF040A18),
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Nombre de la App alineado debajo (máximo 2 líneas, altura fija para mantener alineación)
+        // Nombre de la App alineado debajo
         Box(
             modifier = Modifier
                 .width(tileWidth)
@@ -660,8 +872,12 @@ private fun AppLandscapeTile(
                 text = app.name,
                 fontSize = 12.sp,
                 lineHeight = 15.sp,
-                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
-                color = if (isFocused) Color.White else Color(0xFFCBD5E1),
+                fontWeight = if (isFocused || isBeingMoved) FontWeight.Bold else FontWeight.Medium,
+                color = when {
+                    isBeingMoved -> TvTokens.CyanNeon
+                    isFocused -> Color.White
+                    else -> Color(0xFFCBD5E1)
+                },
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -671,13 +887,14 @@ private fun AppLandscapeTile(
 }
 
 /**
- * Botón "✕ Cerrar" con soporte D-Pad nativo.
+ * Botón "⇅ Organizar" / "✓ Listo" para activar o guardar el reordenamiento.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun CloseModalPillButton(
+private fun OrganizeModePillButton(
+    isReorderMode: Boolean,
     focusRequester: FocusRequester,
-    label: String = "Cerrar",
+    onRight: () -> Unit,
     onDown: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -692,10 +909,8 @@ private fun CloseModalPillButton(
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     when (keyEvent.key) {
-                        Key.DirectionDown -> {
-                            onDown()
-                            true
-                        }
+                        Key.DirectionRight -> { onRight(); true }
+                        Key.DirectionDown -> { onDown(); true }
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                             onClick()
                             true
@@ -707,9 +922,85 @@ private fun CloseModalPillButton(
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> true
                         else -> false
                     }
-                } else {
-                    false
-                }
+                } else false
+            },
+        shape = ButtonDefaults.shape(RoundedCornerShape(50)),
+        colors = ButtonDefaults.colors(
+            containerColor = if (isReorderMode) Color(0x3300E5FF) else Color.White.copy(alpha = 0.10f),
+            contentColor = Color.White,
+            focusedContainerColor = if (isReorderMode) Color(0x5500E5FF) else Color(0x2800E5FF),
+            focusedContentColor = Color.White
+        ),
+        border = ButtonDefaults.border(
+            border = Border(
+                border = BorderStroke(
+                    1.dp,
+                    if (isReorderMode) TvTokens.CyanNeon else Color.White.copy(alpha = 0.28f)
+                ),
+                shape = RoundedCornerShape(50)
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, TvTokens.CyanNeon),
+                shape = RoundedCornerShape(50)
+            )
+        ),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 7.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (isReorderMode) "✓" else "⇅",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isFocused || isReorderMode) TvTokens.CyanNeon else Color.White
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = if (isReorderMode) "Guardar orden" else "Organizar apps",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isReorderMode) TvTokens.CyanNeon else Color.White
+            )
+        }
+    }
+}
+
+/**
+ * Botón "✕ Cerrar" con soporte D-Pad nativo.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun CloseModalPillButton(
+    focusRequester: FocusRequester,
+    label: String = "Cerrar",
+    onLeft: () -> Unit,
+    onDown: () -> Unit,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    Button(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    when (keyEvent.key) {
+                        Key.DirectionLeft -> { onLeft(); true }
+                        Key.DirectionDown -> { onDown(); true }
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            onClick()
+                            true
+                        }
+                        else -> false
+                    }
+                } else if (keyEvent.type == KeyEventType.KeyUp) {
+                    when (keyEvent.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> true
+                        else -> false
+                    }
+                } else false
             },
         shape = ButtonDefaults.shape(RoundedCornerShape(50)),
         colors = ButtonDefaults.colors(
@@ -728,7 +1019,7 @@ private fun CloseModalPillButton(
                 shape = RoundedCornerShape(50)
             )
         ),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 7.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 7.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -765,8 +1056,8 @@ private fun PaginationCircleButton(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.15f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+        targetValue = if (isFocused) 1.12f else 1.0f,
+        animationSpec = tween(110, easing = FastOutSlowInEasing),
         label = "btn_scale"
     )
 
@@ -792,9 +1083,7 @@ private fun PaginationCircleButton(
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> true
                         else -> false
                     }
-                } else {
-                    false
-                }
+                } else false
             }
             .graphicsLayer {
                 scaleX = scale

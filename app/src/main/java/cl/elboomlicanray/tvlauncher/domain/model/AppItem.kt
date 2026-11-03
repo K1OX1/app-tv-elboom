@@ -14,7 +14,9 @@ data class AppItem(
     val isSystemOrPreinstalled: Boolean = false,
     val category: AppCategory = AppCategory.STREAMING,
     val iconDrawable: android.graphics.drawable.Drawable? = null,
-    val bannerDrawable: android.graphics.drawable.Drawable? = null
+    val bannerDrawable: android.graphics.drawable.Drawable? = null,
+    val iconBitmap: androidx.compose.ui.graphics.ImageBitmap? = null,
+    val bannerBitmap: androidx.compose.ui.graphics.ImageBitmap? = null
 )
 
 enum class AppCategory {

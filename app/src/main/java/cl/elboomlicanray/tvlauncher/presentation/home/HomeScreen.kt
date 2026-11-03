@@ -343,14 +343,16 @@ fun HomeScreen(
                 onDismiss = { activeModal = "none" }
             )
             "streaming" -> {
-                val allInstalled by viewModel.allInstalledApps.collectAsStateWithLifecycle()
                 StreamingAppsDialog(
-                    apps = if (allInstalled.isNotEmpty()) allInstalled else uiState.streamingApps,
+                    apps = uiState.streamingApps,
                     selectedLanguage = currentLanguage,
                     isSmartDnsEnabled = uiState.isSmartDnsEnabled,
                     onAppClick = { app ->
                         activeModal = "none"
                         viewModel.onAppClicked(app)
+                    },
+                    onReorderApps = { newOrder ->
+                        viewModel.reorderApps(newOrder)
                     },
                     onDismiss = { activeModal = "none" }
                 )

@@ -11,6 +11,7 @@ import android.widget.Toast
 import cl.elboomlicanray.tvlauncher.R
 import cl.elboomlicanray.tvlauncher.domain.model.AppCategory
 import cl.elboomlicanray.tvlauncher.domain.model.AppItem
+import androidx.compose.ui.graphics.asImageBitmap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -321,6 +322,9 @@ class AppLauncherHelper @Inject constructor(
                 (rawIcon.intrinsicWidth.toFloat() / rawIcon.intrinsicHeight.toFloat() > 1.3f)
         val effectiveBanner = rawBanner ?: if (isIconWide) rawIcon else null
 
+        val bannerBitmap = drawableToComposeBitmap(effectiveBanner, 320, 180)
+        val iconBitmap = if (bannerBitmap == null) drawableToComposeBitmap(rawIcon, 120, 120) else null
+
         return AppItem(
             id = pkg,
             name = label,
@@ -329,7 +333,9 @@ class AppLauncherHelper @Inject constructor(
             isSystemOrPreinstalled = true,
             category = AppCategory.STREAMING,
             iconDrawable = rawIcon,
-            bannerDrawable = effectiveBanner
+            bannerDrawable = effectiveBanner,
+            iconBitmap = iconBitmap,
+            bannerBitmap = bannerBitmap
         )
     }
 
@@ -344,6 +350,9 @@ class AppLauncherHelper @Inject constructor(
                     (rawIcon.intrinsicWidth.toFloat() / rawIcon.intrinsicHeight.toFloat() > 1.3f)
             val effectiveBanner = rawBanner ?: if (isIconWide) rawIcon else null
 
+            val bannerBitmap = drawableToComposeBitmap(effectiveBanner, 320, 180)
+            val iconBitmap = if (bannerBitmap == null) drawableToComposeBitmap(rawIcon, 120, 120) else null
+
             AppItem(
                 id = pkg,
                 name = label,
@@ -352,9 +361,32 @@ class AppLauncherHelper @Inject constructor(
                 isSystemOrPreinstalled = true,
                 category = AppCategory.STREAMING,
                 iconDrawable = rawIcon,
-                bannerDrawable = effectiveBanner
+                bannerDrawable = effectiveBanner,
+                iconBitmap = iconBitmap,
+                bannerBitmap = bannerBitmap
             )
         } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun drawableToComposeBitmap(
+        drawable: android.graphics.drawable.Drawable?,
+        targetWidth: Int,
+        targetHeight: Int
+    ): androidx.compose.ui.graphics.ImageBitmap? {
+        if (drawable == null) return null
+        return try {
+            val w = if (targetWidth > 0) targetWidth else if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 128
+            val h = if (targetHeight > 0) targetHeight else if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 128
+            val safeW = w.coerceIn(32, 640)
+            val safeH = h.coerceIn(32, 360)
+            val bitmap = android.graphics.Bitmap.createBitmap(safeW, safeH, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, safeW, safeH)
+            drawable.draw(canvas)
+            bitmap.asImageBitmap()
+        } catch (_: Throwable) {
             null
         }
     }

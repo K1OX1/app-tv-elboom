@@ -34,7 +34,7 @@ class HotelPreferencesHelper @Inject constructor(
         private const val KEY_SELECTED_LANGUAGE = "hotel_tv_selected_language"
         private const val DEFAULT_LANGUAGE = "ES"
         private const val KEY_UNIT_TOKEN = "hotel_tv_unit_token"
-        private const val DEFAULT_UNIT_TOKEN = ""
+        private const val DEFAULT_UNIT_TOKEN = "4f9b8c2d1e0a7f3b6c5d8e9f2a1b4c7d0e3f6a9b2c5d8e1f4a7b0c3d6e9f2a5b"
 
         // Nombres de archivos de caché en disco para mantener el heap de RAM limpio
         private const val FILE_ACCOMMODATIONS = "cms_accommodations.json"
@@ -112,6 +112,10 @@ class HotelPreferencesHelper @Inject constructor(
         prefs.edit().putBoolean(KEY_KIOSK_PROMPT_DISMISSED, dismissed).apply()
     }
 
+    fun isUnitConfigured(): Boolean {
+        return prefs.contains(KEY_UNIT_ID)
+    }
+
     fun getConfiguredUnitId(): Int {
         return prefs.getInt(KEY_UNIT_ID, DEFAULT_UNIT_ID)
     }
@@ -127,7 +131,24 @@ class HotelPreferencesHelper @Inject constructor(
     }
 
     fun getUnitToken(): String {
-        return prefs.getString(KEY_UNIT_TOKEN, DEFAULT_UNIT_TOKEN) ?: DEFAULT_UNIT_TOKEN
+        val custom = prefs.getString(KEY_UNIT_TOKEN, null)
+        if (!custom.isNullOrBlank()) {
+            return custom
+        }
+        val unitId = getConfiguredUnitId()
+        return getUnitSpecificToken(unitId)
+    }
+
+    fun getUnitSpecificToken(unitId: Int): String {
+        return when (unitId) {
+            1 -> "b8c8575a908be1b2"
+            2 -> "0f7c759d4bdbe268"
+            3 -> "11149e4b3025409e"
+            4 -> "a9ad50e848ea6caa"
+            5 -> "b91d0fbbd6a8c938"
+            6 -> "cb9d368d959a0d8d"
+            else -> DEFAULT_UNIT_TOKEN
+        }
     }
 
     fun setUnitToken(token: String) {
@@ -211,6 +232,19 @@ class HotelPreferencesHelper @Inject constructor(
 
     fun setSelectedAppPackages(packages: Set<String>) {
         prefs.edit().putString("selected_home_apps", packages.joinToString(",")).apply()
+    }
+
+    fun getCustomAppOrder(): List<String> {
+        val raw = prefs.getString("custom_apps_order", null)
+        return if (!raw.isNullOrBlank()) {
+            raw.split(",").filter { it.isNotBlank() }
+        } else {
+            emptyList()
+        }
+    }
+
+    fun setCustomAppOrder(order: List<String>) {
+        prefs.edit().putString("custom_apps_order", order.joinToString(",")).apply()
     }
 
     // =========================================================================

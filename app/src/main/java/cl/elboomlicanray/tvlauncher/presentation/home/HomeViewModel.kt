@@ -103,18 +103,21 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             val installed = appLauncherHelper.getInstalledTvApps()
-            _allInstalledApps.value = installed
+            val customOrder = preferencesHelper.getCustomAppOrder()
+            val orderedInstalled = applyCustomAppOrder(installed, customOrder)
+            _allInstalledApps.value = orderedInstalled
 
             val selectedPkgs = preferencesHelper.getSelectedAppPackages()
             val appsToShow = if (selectedPkgs.isNotEmpty()) {
-                val filtered = installed.filter { selectedPkgs.contains(it.packageName) }
-                if (filtered.isNotEmpty()) filtered else installed
+                val filtered = orderedInstalled.filter { selectedPkgs.contains(it.packageName) }
+                if (filtered.isNotEmpty()) filtered else orderedInstalled
             } else {
-                installed
+                orderedInstalled
             }
 
             _uiState.update { it.copy(streamingApps = appsToShow) }
         }
+
 
         viewModelScope.launch {
             appRepository.getCabinServices().collect { services ->
@@ -135,6 +138,10 @@ class HomeViewModel @Inject constructor(
         }
 
         refreshHotelAndWeatherData()
+
+        if (!preferencesHelper.isUnitConfigured()) {
+            openAdminDialog()
+        }
     }
 
     fun saveSelectedApps(selectedPackages: Set<String>) {
@@ -146,6 +153,25 @@ class HomeViewModel @Inject constructor(
             allApps
         }
         _uiState.update { it.copy(streamingApps = appsToShow) }
+    }
+
+    fun reorderApps(newOrder: List<AppItem>) {
+        val orderedPackages = newOrder.map { it.packageName }
+        preferencesHelper.setCustomAppOrder(orderedPackages)
+        _uiState.update { it.copy(streamingApps = newOrder) }
+
+        val currentAll = _allInstalledApps.value
+        if (currentAll.isNotEmpty()) {
+            _allInstalledApps.value = applyCustomAppOrder(currentAll, orderedPackages)
+        }
+    }
+
+    private fun applyCustomAppOrder(apps: List<AppItem>, customOrder: List<String>): List<AppItem> {
+        if (customOrder.isEmpty()) return apps
+        val orderMap = customOrder.withIndex().associate { it.value to it.index }
+        return apps.sortedWith(
+            compareBy<AppItem> { orderMap[it.packageName] ?: (1000 + apps.indexOf(it)) }
+        )
     }
 
     fun refreshHotelAndWeatherData() {
