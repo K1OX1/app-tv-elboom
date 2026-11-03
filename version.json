@@ -1,8 +1,8 @@
 {
-  "versionCode": 26,
-  "versionName": "1.0.25",
+  "versionCode": 27,
+  "versionName": "1.0.26",
   "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
   "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/latest/download/app-release.apk",
-  "changelog": "Versión 1.0.25: Modo Organizar aplicaciones interactivo con D-Pad, guardado persistente del orden y optimización de fluidez 60 FPS con texturas GPU nativas.",
-  "sha256": "0A82DEF0F472BAA10025520712F396FBD5237E0E09EA01E066C7FB7DEE48BB3F"
+  "changelog": "Versión 1.0.26: Sincronización instantánea con Nobeds con token de seguridad por cabaña (1 a 6) y escaneo total de aplicaciones del TV Box.",
+  "sha256": "192294315C46B943636E5EAC94DB75299E1559817E067B4DBAC2120B647777C4"
 }
