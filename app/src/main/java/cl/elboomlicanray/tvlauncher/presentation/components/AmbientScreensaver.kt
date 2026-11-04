@@ -55,6 +55,8 @@ fun AmbientScreensaver(
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lowMemory = remember(context) { cl.elboomlicanray.tvlauncher.presentation.playback.isLowMemoryTv(context) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -96,11 +98,14 @@ fun AmbientScreensaver(
     ) {
         Crossfade(
             targetState = currentIndex,
-            animationSpec = tween(durationMillis = 2000),
+            animationSpec = tween(durationMillis = if (lowMemory) 0 else 800),
             label = "screensaver_crossfade"
         ) { index ->
             AsyncImage(
-                model = scenicWallpapers[index],
+                model = coil.request.ImageRequest.Builder(context)
+                    .data(scenicWallpapers[index].replace("w=1920", if (lowMemory) "w=1280" else "w=1920"))
+                    .size(if (lowMemory) 1280 else 1920, if (lowMemory) 720 else 1080)
+                    .build(),
                 contentDescription = "Lican Ray Paisaje",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

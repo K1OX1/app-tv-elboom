@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -113,6 +115,7 @@ fun AdminSettingsDialog(
     val primaryFocus = remember { FocusRequester() }
     val dashboardFocus = remember { FocusRequester() }
     val context = LocalContext.current
+    var externalVideo by remember { mutableStateOf(cl.elboomlicanray.tvlauncher.presentation.playback.VideoPreferences.useYouTubeApp(context)) }
 
     LaunchedEffect(Unit) {
         isVisible = true
@@ -613,7 +616,7 @@ fun AdminSettingsDialog(
                                 "kiosk" -> {
                                     // PESTAÑA 3: KIOSCO & SEGURIDAD TV
                                     Column(
-                                        modifier = Modifier.fillMaxSize(),
+                                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(14.dp)
                                     ) {
                                         Text(
@@ -622,6 +625,25 @@ fun AdminSettingsDialog(
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White
                                         )
+
+                                        Text("Videos de guía y alojamiento · guardado en esta TV", color = Color.White, fontSize = 15.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            AdminSmallActionButton(
+                                                label = if (!externalVideo) "✓ Integrado (actual)" else "Usar integrado",
+                                                onClick = {
+                                                    externalVideo = false
+                                                    cl.elboomlicanray.tvlauncher.presentation.playback.VideoPreferences.setUseYouTubeApp(context, false)
+                                                }
+                                            )
+                                            AdminSmallActionButton(
+                                                label = if (externalVideo) "✓ App YouTube (actual)" else "Usar app YouTube",
+                                                onClick = {
+                                                    externalVideo = true
+                                                    cl.elboomlicanray.tvlauncher.presentation.playback.VideoPreferences.setUseYouTubeApp(context, true)
+                                                }
+                                            )
+                                        }
+                                        Text("Integrado: permanece en El Boom y vuelve con Atrás. YouTube: abre la aplicación instalada. El cambio se aplica al próximo video.", color = TextMuted, fontSize = 13.sp)
 
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),

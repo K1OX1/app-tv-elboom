@@ -1354,16 +1354,18 @@ private fun VideoTourPanelView(
  * Puente JavaScript para notificar de forma asíncrona a Android
  * cuando finaliza un video en la sección Mi Estadía.
  */
-private class VideoEndBridgeStay(private val ready: () -> Unit, private val error: () -> Unit, private val onEnd: () -> Unit) {
-    @JavascriptInterface fun started() { Handler(Looper.getMainLooper()).post { ready() } }
-    @JavascriptInterface fun failed() { Handler(Looper.getMainLooper()).post { error() } }
+private fun WebView.attachVideoBridge(bridge: VideoEndBridgeStay) {
+    addJavascriptInterface(bridge, "AndroidHost")
+}
 
-    @JavascriptInterface
-    fun onVideoEnded() {
-        Handler(Looper.getMainLooper()).post {
-            onEnd()
-        }
-    }
+private class VideoEndBridgeStay(private val ready: () -> Unit, private val error: () -> Unit, private val onEnd: () -> Unit) {
+    private val handler = Handler(Looper.getMainLooper())
+    @Volatile private var active = true
+    private fun dispatch(action: () -> Unit) { handler.post { if (active) action() } }
+    fun dispose() { active = false; handler.removeCallbacksAndMessages(null) }
+    @JavascriptInterface fun started() = dispatch(ready)
+    @JavascriptInterface fun failed() = dispatch(error)
+    @JavascriptInterface fun onVideoEnded() = dispatch(onEnd)
 }
 
 /**
@@ -1372,6 +1374,38 @@ private class VideoEndBridgeStay(private val ready: () -> Unit, private val erro
 @OptIn(UnstableApi::class)
 @Composable
 internal fun FullScreenVideoOverlay(title: String, videoUrl: String, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val youtubeId = remember(videoUrl) { extractYoutubeVideoId(videoUrl) }
+    var routeResolved by remember(videoUrl) { mutableStateOf(false) }
+    LaunchedEffect(videoUrl) {
+        if (youtubeId != null && cl.elboomlicanray.tvlauncher.presentation.playback.VideoPreferences.useYouTubeApp(context)) {
+            cl.elboomlicanray.tvlauncher.presentation.home.MainActivityEvents.triggerReleaseDecoders()
+            for (pkg in listOf("com.google.android.youtube.tv", "com.google.android.youtube")) {
+                try {
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://www.youtube.com/watch?v=$youtubeId")).apply {
+                        setPackage(pkg)
+                    })
+                    onClose()
+                    return@LaunchedEffect
+                } catch (_: android.content.ActivityNotFoundException) {
+                    // Try the other official app, then the embedded player.
+                } catch (_: SecurityException) {
+                    // Some managed TVs prohibit opening another app.
+                }
+            }
+        }
+        if (youtubeId != null && cl.elboomlicanray.tvlauncher.presentation.playback.VideoPreferences.useYouTubeApp(context)) {
+            android.widget.Toast.makeText(context, "YouTube no está disponible. Abriendo el reproductor integrado.", android.widget.Toast.LENGTH_LONG).show()
+        }
+        routeResolved = true
+    }
+    if (!routeResolved) {
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Text("Abriendo video…", color = Color.White)
+        }
+        return
+    }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(owner) {
         val events = cl.elboomlicanray.tvlauncher.presentation.home.MainActivityEvents
@@ -1508,6 +1542,7 @@ private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, o
             }
     ) {
         if (youtubeVideoId != null) {
+            val bridge: VideoEndBridgeStay = remember { VideoEndBridgeStay(onStarted, onFailure, onClose) }
             val htmlContent = """
                 <!DOCTYPE html>
                 <html>
@@ -1531,6 +1566,21 @@ private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, o
                         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
                         var player;
+                        var lastPosition = -1, stalledSince = 0;
+                        // Detect a player that loaded but then stopped progressing. Never retry in a loop.
+                        setInterval(function() {
+                            if (!player || !player.getPlayerState) return;
+                            var state = player.getPlayerState();
+                            var pos = player.getCurrentTime();
+                            if ((state === 1 || state === 3) && pos === lastPosition) {
+                                if (!stalledSince) stalledSince = Date.now();
+                                if (Date.now() - stalledSince > 30000) {
+                                    window.AndroidHost.failed();
+                                    stalledSince = Date.now();
+                                }
+                            } else { stalledSince = 0; }
+                            lastPosition = pos;
+                        }, 2000);
                         function onYouTubeIframeAPIReady() {
                             player = new YT.Player('player', {
                                 height: '100%',
@@ -1540,9 +1590,7 @@ private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, o
                                     'autoplay': 1,
                                     'controls': 0,
                                     'rel': 0,
-                                    'showinfo': 0,
                                     'iv_load_policy': 3,
-                                    'modestbranding': 1,
                                     'playsinline': 1,
                                     'fs': 0,
                                     'disablekb': 1,
@@ -1588,6 +1636,7 @@ private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, o
 
             DisposableEffect(Unit) {
                 onDispose {
+                    bridge.dispose()
                     try {
                         webViewInstance?.apply {
                             removeJavascriptInterface("AndroidHost")
@@ -1608,7 +1657,6 @@ private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, o
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
-                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
                         resumeTimers()
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1624,26 +1672,25 @@ private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, o
                             useWideViewPort = true
                             allowFileAccess = false
                             allowContentAccess = false
-                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
                         }
                         setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
                         webViewClient = object : WebViewClient() {
+                            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                                onFailure()
+                                return true
+                            }
                             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                 val uri = request?.url ?: return false
                                 val host = uri.host ?: ""
-                                if (host.contains("youtube.com") ||
-                                    host.contains("googlevideo.com") ||
-                                    host.contains("ytimg.com") ||
-                                    host.contains("youtube-nocookie.com") ||
-                                    uri.toString() == "about:blank") {
-                                    return false
-                                }
-                                return true
+                                val allowedHost = listOf("youtube.com", "googlevideo.com", "ytimg.com", "youtube-nocookie.com")
+                                    .any { host == it || host.endsWith(".$it") }
+                                return !allowedHost && uri.toString() != "about:blank"
                             }
                         }
-                        addJavascriptInterface(VideoEndBridgeStay(onStarted, onFailure, onClose), "AndroidHost")
+                        attachVideoBridge(bridge)
                         setOnKeyListener { _, keyCode, event ->
                             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
                                 onClose()

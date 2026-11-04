@@ -91,3 +91,13 @@ Rutas: `data/` y `service/`
 - `docs/API_ELBOOM.md`: Especificación técnica exhaustiva de todas las consultas HTTP a `https://elboom.cl` (`/api/hotel-tv`, `/api/accommodations`, `/api/tourist-guide`, `/api/property`, `/api/hotel-tv/send-attraction`, `/tv/version.json`), tokens de cabaña, schemas JSON de respuesta/petición y prompt listo para IAs backend.
 - `docs/ARCHITECTURE.md`: Principios arquitectónicos, responsabilidades modulares y diseño 10-Foot UI.
 - `docs/TV_PERFORMANCE.md`: Auditoría de consumo de RAM, aceleración GPU y optimización para hardware 1GB/2GB.
+
+
+## Reproducción en TV con poca memoria (2026-11-04)
+- `presentation/modals/stay/MyStayDialog.kt`: reproductor compartido por alojamiento y guía. El integrado es el modo predeterminado. Solo se abre YouTube oficial TV/móvil cuando el administrador lo selecciona para esa TV. Si falta o está restringida, usa WebView con origen elboom.cl. Volver desde YouTube regresa al launcher; no se reabre el video automáticamente.
+- `presentation/playback/TvPlayback.kt`: preferencia de 480p/30 fps/1,2 Mbps en equipos de poca memoria y previews; 720p en los demás. Solo selecciona variantes existentes: no convierte streams de resolución fija. Reserva temporal 10–25 segundos, inicio 2 segundos y recuperación 4 segundos; conserva topes de muestras comprimidas de 4/8/16 MiB.
+- Validación pendiente en TV física: reproducción sostenida, regreso con Atrás y comportamiento de red. El emulador no demuestra fluidez en hardware de 1 GB.
+
+- `presentation/sections/hero/PersistentLiveTvFrame.kt`: libera la instancia completa y retira PlayerView al abrir secciones, pasar a segundo plano o recibir releaseDecodersEvents. Recrea el preview al regresar al inicio; callbacks obsoletos no disparan el stream de respaldo.
+
+- `presentation/playback/VideoPreferences.kt`: selección local persistente del reproductor desde Administrador → Kiosco y Seguridad. Auditoría y pendientes: `docs/PLAYBACK_AUDIT.md`.

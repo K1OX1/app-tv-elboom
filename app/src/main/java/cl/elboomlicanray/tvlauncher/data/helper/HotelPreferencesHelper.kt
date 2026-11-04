@@ -190,11 +190,7 @@ class HotelPreferencesHelper @Inject constructor(
             return false
         }
 
-        // Retardo artificial constante para inmunidad contra ataques de temporización (timing attacks)
-        try {
-            Thread.sleep(250)
-        } catch (_: InterruptedException) {}
-
+        // Constant-time comparison and persistent attempt lockout; never sleep on the UI thread.
         val storedHash = prefs.getString(KEY_ADMIN_PIN_HASH, null) ?: computePinHash(DEFAULT_PIN)
         val inputHash = computePinHash(pin.trim())
 

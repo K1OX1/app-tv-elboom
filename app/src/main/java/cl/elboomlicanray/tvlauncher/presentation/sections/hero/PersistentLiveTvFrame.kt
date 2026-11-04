@@ -85,65 +85,69 @@ fun PersistentLiveTvFrame(
     val fallbackUri = "https://origin.dpsgo.com/ssai/event/GI-9cp_bT8KcerLpZwkuhw/master.m3u8"
     var isVideoReady by remember { mutableStateOf(false) }
 
-    val exoPlayer = remember(context) {
-        cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context, preview = true)
-    }
+    var exoPlayer by remember { mutableStateOf<androidx.media3.exoplayer.ExoPlayer?>(null) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     var isResumed by remember(lifecycleOwner) {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))
     }
-    val playbackAllowed by rememberUpdatedState(isPlaybackActive && isResumed)
-    var fallbackAttempted by remember(activeChStream) { mutableStateOf(false) }
+    var suspended by remember { mutableStateOf(false) }
+    val playbackAllowed = isPlaybackActive && isResumed && !suspended
 
-    LaunchedEffect(activeChStream, isPlaybackActive, isResumed) {
+    // A released player owns no decoder or sample buffers while another screen is open.
+    fun releasePreview() {
+        val previous = exoPlayer
+        exoPlayer = null
         isVideoReady = false
-        if (isPlaybackActive && isResumed) {
-            fallbackAttempted = false
-            exoPlayer.setMediaItem(MediaItem.fromUri(activeChStream))
-            exoPlayer.prepare()
-            exoPlayer.play()
-        } else {
-            exoPlayer.stop()
-            exoPlayer.clearMediaItems()
-        }
+        previous?.release()
     }
 
+    LaunchedEffect(isPlaybackActive, isResumed) {
+        if (isPlaybackActive && isResumed) suspended = false
+    }
     LaunchedEffect(Unit) {
         MainActivityEvents.releaseDecodersEvents.collect {
-            try {
-                exoPlayer.stop()
-                exoPlayer.clearMediaItems()
-            } catch (_: Exception) {}
+            suspended = true
+            releasePreview()
         }
     }
-
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
             isResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+            if (!isResumed) releasePreview()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(context, activeChStream, playbackAllowed) {
+        isVideoReady = false
+        val player = if (playbackAllowed) {
+            cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context, preview = true)
+        } else null
+        exoPlayer = player
+        var fallbackAttempted = false
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                isVideoReady = playbackState == Player.STATE_READY
+                if (exoPlayer === player) isVideoReady = playbackState == Player.STATE_READY
             }
             override fun onPlayerError(error: PlaybackException) {
-                if (!playbackAllowed || fallbackAttempted) return
+                if (player == null || exoPlayer !== player || fallbackAttempted) return
                 fallbackAttempted = true
-                try {
-                    exoPlayer.setMediaItem(MediaItem.fromUri(fallbackUri))
-                    exoPlayer.prepare()
-                    exoPlayer.play()
-                } catch (_: Exception) {}
+                player.setMediaItem(MediaItem.fromUri(fallbackUri))
+                player.prepare()
+                player.play()
             }
         }
-        exoPlayer.addListener(listener)
+        player?.apply {
+            addListener(listener)
+            setMediaItem(MediaItem.fromUri(activeChStream))
+            prepare()
+            play()
+        }
         onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
+            player?.removeListener(listener)
+            // Lifecycle/app-launch handling may have already released this instance.
+            if (player != null && exoPlayer === player) releasePreview()
         }
     }
 
@@ -193,10 +197,8 @@ fun PersistentLiveTvFrame(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
-                    try {
-                        exoPlayer.stop()
-                        exoPlayer.clearMediaItems()
-                    } catch (_: Exception) {}
+                    suspended = true
+                    releasePreview()
                     onOpenFullscreen()
                 }
             )
@@ -206,7 +208,7 @@ fun PersistentLiveTvFrame(
                 .fillMaxSize()
                 .clip(frameShape)
         ) {
-            AndroidView(
+            if (exoPlayer != null) AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         player = exoPlayer
@@ -219,6 +221,8 @@ fun PersistentLiveTvFrame(
                         )
                     }
                 },
+                update = { it.player = exoPlayer },
+                onRelease = { it.player = null },
                 modifier = Modifier.fillMaxSize()
             )
 

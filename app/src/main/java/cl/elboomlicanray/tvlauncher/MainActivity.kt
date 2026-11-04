@@ -27,6 +27,7 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    private var screensaverDismissKey: Int? = null
     private var zeroKeyPressCount = 0
     private var lastZeroKeyPressTime = 0L
 
@@ -58,11 +59,18 @@ class MainActivity : ComponentActivity() {
      * - Detección del atajo secreto '0000' para menú administrador
      * - Filtro anti-rebote D-Pad para 60 FPS estables
      */
+    // Framework Activity override; AndroidX Core annotates its inherited implementation as restricted.
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (screensaverDismissKey == event.keyCode) {
+            if (event.action == KeyEvent.ACTION_UP) screensaverDismissKey = null
+            return true
+        }
         // Si el salvapantallas está activo, CUALQUIER tecla lo descarta y se consume por completo
         // evitando que se abra la app o acción seleccionada de fondo (solución a bug de D-pad center).
         if (MainActivityEvents.isScreensaverShowing) {
             if (event.action == KeyEvent.ACTION_DOWN) {
+                screensaverDismissKey = event.keyCode
                 MainActivityEvents.dismissScreensaver()
             }
             return true
