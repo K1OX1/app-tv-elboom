@@ -80,6 +80,14 @@ Rutas: `data/` y `service/`
 - `data/helper/AppLauncherHelper.kt`: Caché de intents, ejecución de Leanback TV intents y fallback Play Store.
 - `data/helper/HotelPreferencesHelper.kt`: SharedPreferences (Cabaña configurada, PIN, API URL).
 - `data/helper/KioskPermissionHelper.kt`: Comprobación de servicio de accesibilidad y auto-enable root.
-- `data/repository/HotelTvRepository.kt`: Cliente HTTP Nobeds API y Open-Meteo.
+- `data/repository/HotelTvRepository.kt`: Cliente HTTP Nobeds API, CMS Dinámico y Open-Meteo.
+- `data/update/OtaUpdateManager.kt`: Gestor de actualizaciones automáticas OTA con validación SHA-256.
 - `service/ZappingKioskAccessibilityService.kt`: Servicio de accesibilidad para re-mapeo D-Pad en Zapping TV.
 - `service/KioskShellCommander.kt`: Ejecución de comandos root para TV sticks preparados.
+
+---
+
+## 9. Documentación y Contratos de API Externa
+- `docs/API_ELBOOM.md`: Especificación técnica exhaustiva de todas las consultas HTTP a `https://elboom.cl` (`/api/hotel-tv`, `/api/accommodations`, `/api/tourist-guide`, `/api/property`, `/api/hotel-tv/send-attraction`, `/tv/version.json`), tokens de cabaña, schemas JSON de respuesta/petición y prompt listo para IAs backend.
+- `docs/ARCHITECTURE.md`: Principios arquitectónicos, responsabilidades modulares y diseño 10-Foot UI.
+- `docs/TV_PERFORMANCE.md`: Auditoría de consumo de RAM, aceleración GPU y optimización para hardware 1GB/2GB.
