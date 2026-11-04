@@ -3,8 +3,12 @@ package cl.elboomlicanray.tvlauncher.presentation.modals.stay
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -12,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -67,6 +72,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -153,15 +159,38 @@ fun MyStayDialog(
 
     val closeFocusRequester = remember { FocusRequester() }
     val initialTabFocusRequester = remember { FocusRequester() }
+    val initialActionFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         isVisible = true
+        kotlinx.coroutines.delay(100)
         try {
-            initialTabFocusRequester.requestFocus()
+            initialActionFocusRequester.requestFocus()
         } catch (_: Exception) {
             try {
-                closeFocusRequester.requestFocus()
-            } catch (_: Exception) {}
+                initialTabFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                try {
+                    closeFocusRequester.requestFocus()
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    LaunchedEffect(isPlayingVideoOverlay) {
+        if (!isPlayingVideoOverlay) {
+            kotlinx.coroutines.delay(100)
+            try {
+                initialActionFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                try {
+                    initialTabFocusRequester.requestFocus()
+                } catch (_: Exception) {
+                    try {
+                        closeFocusRequester.requestFocus()
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -202,851 +231,6 @@ fun MyStayDialog(
                     .fillMaxSize()
                     .background(Color(0xFF030712))
             ) {
-                // =========================================================================
-                // 1. FOTOGRAFÍA PANORÁMICA DE FONDO (ATMÓSFERA CINEMATOGRÁFICA A PANTALLA COMPLETA)
-                // =========================================================================
-                if (selectedTab == "Reserva") {
-                    Image(
-                        painter = painterResource(id = R.drawable.bg_stay_cinematic),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    val heroBackground = realPhotoImages.getOrNull(selectedImageIndex)
-                        ?: realPhotoImages.firstOrNull() ?: propertyInfo.heroBgImage
-                    AsyncImage(
-                        model = heroBackground,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.Center,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                // Scrim oscuro cálido para máxima legibilidad sin apagar la calidez del paisaje
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0.00f to Color(0xB8050B14),
-                                0.45f to Color(0xCC07101E),
-                                1.00f to Color(0xEA040810)
-                            )
-                        )
-                )
-
-                // =========================================================================
-                // 2. CAPA PRINCIPAL DE INTERFAZ DE USUARIO (10-FOOT UI PARA TV)
-                // =========================================================================
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 48.dp, vertical = 22.dp)
-                ) {
-                    // ---------------------------------------------------------------------
-                    // BARRA SUPERIOR: NOMBRE DE CABAÑA, PESTAÑAS Y CERRAR
-                    // ---------------------------------------------------------------------
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Título y Subtítulo dinámico
-                        Column {
-                            val cabinTitle = dynamicCabin?.name?.ifBlank { unit.name } ?: unit.name
-                            Text(
-                                text = cabinTitle,
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            val subtitleText = remember(stay) {
-                                if (stay.isOccupied) {
-                                    val guestName = stay.guestFullName.ifBlank { "Huésped registrado" }
-                                    "Estadía de $guestName · ${stay.nights} noche${if (stay.nights > 1) "s" else ""} (${stay.checkinDate} al ${stay.checkoutDate})"
-                                } else {
-                                    "Información de tu estadía y características del alojamiento"
-                                }
-                            }
-                            Text(
-                                text = subtitleText,
-                                fontSize = 12.sp,
-                                color = Color(0xFFBAC4D0)
-                            )
-                        }
-
-                        // Pestañas de Navegación Superiores (Estilo Boutique)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            tabs.forEachIndexed { index, tabName ->
-                                val isSelected = tabName == selectedTab ||
-                                        (tabName.startsWith("Fotos") && selectedTab.startsWith("Fotos"))
-                                val interactionSource = remember { MutableInteractionSource() }
-                                val isFocused by interactionSource.collectIsFocusedAsState()
-
-                                val tabModifier = if (index == 0) {
-                                    Modifier.focusRequester(initialTabFocusRequester)
-                                } else {
-                                    Modifier
-                                }
-
-                                Box(
-                                    modifier = tabModifier
-                                        .graphicsLayer {
-                                            val scale = if (isFocused) 1.06f else 1.0f
-                                            scaleX = scale
-                                            scaleY = scale
-                                        }
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(
-                                            when {
-                                                isFocused -> Color(0xFF00E5FF).copy(alpha = 0.22f)
-                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.16f)
-                                                else -> Color.White.copy(alpha = 0.05f)
-                                            }
-                                        )
-                                        .border(
-                                            width = if (isFocused || isSelected) 1.5.dp else 1.dp,
-                                            color = when {
-                                                isFocused -> Color(0xFF00E5FF)
-                                                isSelected -> Color(0xFF00E5FF)
-                                                else -> Color.White.copy(alpha = 0.14f)
-                                            },
-                                            shape = RoundedCornerShape(20.dp)
-                                        )
-                                        .clickable(
-                                            interactionSource = interactionSource,
-                                            indication = null
-                                        ) {
-                                            selectedTab = tabName
-                                        }
-                                        .focusable(interactionSource = interactionSource)
-                                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = tabName,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
-                                        color = when {
-                                            isFocused -> Color(0xFF00E5FF)
-                                            isSelected -> Color(0xFF00E5FF)
-                                            else -> Color.White.copy(alpha = 0.85f)
-                                        }
-                                    )
-                                }
-                            }
-
-                            // Botón Cerrar (Píldora con borde fino)
-                            val closeInteraction = remember { MutableInteractionSource() }
-                            val closeFocused by closeInteraction.collectIsFocusedAsState()
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier
-                                    .focusRequester(closeFocusRequester)
-                                    .graphicsLayer {
-                                        val scale = if (closeFocused) 1.06f else 1.0f
-                                        scaleX = scale
-                                        scaleY = scale
-                                    }
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(
-                                        if (closeFocused) Color(0xFF00E5FF).copy(alpha = 0.20f)
-                                        else Color.White.copy(alpha = 0.05f)
-                                    )
-                                    .border(
-                                        width = if (closeFocused) 1.5.dp else 1.dp,
-                                        color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                                    .clickable(
-                                        interactionSource = closeInteraction,
-                                        indication = null
-                                    ) {
-                                        onDismiss()
-                                    }
-                                    .focusable(interactionSource = closeInteraction)
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                CloseCanvasIcon(
-                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = "Cerrar",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (closeFocused) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White
-                                )
-                            }
-                        }
-                    }
-
-                    // ---------------------------------------------------------------------
-                    // CUERPO CENTRAL DE LA PANTALLA
-                    // ---------------------------------------------------------------------
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
-                        when {
-                            selectedTab == "Reserva" -> {
-                                // VISTA PRINCIPAL: 3 COLUMNAS EXACTAS SEGÚN MAQUETA
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    // =====================================================
-                                    // COLUMNA 1: "Tu alojamiento"
-                                    // =====================================================
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color(0xCC0D1522))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                            .padding(16.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            // Encabezado con ícono casa turquesa
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                HomeCanvasIcon(
-                                                    color = Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "Tu alojamiento",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF00E5FF)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(10.dp))
-
-                                            // Miniatura 16:9 con foto fotográfica real de la cabaña
-                                            val cabinThumb = realPhotoImages.firstOrNull { it.contains("1Xbjwgzh") || it.contains("5.jpg") }
-                                                ?: realPhotoImages.firstOrNull() ?: propertyInfo.heroBgImage
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(115.dp)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .background(Color(0xFF0B111A))
-                                            ) {
-                                                AsyncImage(
-                                                    model = cabinThumb,
-                                                    contentDescription = "Cabaña",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(10.dp))
-
-                                            // Nombre / Tipo de Cabaña
-                                            val cabinType = dynamicCabin?.type?.ifBlank { unit.type } ?: unit.type
-                                            Text(
-                                                text = cabinType,
-                                                fontSize = 17.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-
-                                            Spacer(modifier = Modifier.height(6.dp))
-
-                                            // Fila de Capacidad, Metros cuadrados y Baños con íconos
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                val capacity = dynamicCabin?.capacity ?: unit.capacity
-                                                val area = dynamicCabin?.area ?: unit.area
-                                                val bathrooms = dynamicCabin?.bathrooms ?: unit.bathrooms
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    PersonCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        text = "$capacity personas",
-                                                        fontSize = 11.5.sp,
-                                                        color = Color.White.copy(alpha = 0.85f)
-                                                    )
-                                                }
-
-                                                Text(text = "·", color = Color.White.copy(alpha = 0.35f))
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    RulerCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        text = "$area m²",
-                                                        fontSize = 11.5.sp,
-                                                        color = Color.White.copy(alpha = 0.85f)
-                                                    )
-                                                }
-
-                                                Text(text = "·", color = Color.White.copy(alpha = 0.35f))
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    ShowerCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(13.dp)
-                                                    )
-                                                    Text(
-                                                        text = "$bathrooms baño${if (bathrooms > 1) "s" else ""}",
-                                                        fontSize = 11.5.sp,
-                                                        color = Color.White.copy(alpha = 0.85f)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Fila compacta de Check-in y Check-out
-                                        Column {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(1.dp)
-                                                    .background(Color.White.copy(alpha = 0.08f))
-                                            )
-                                            Spacer(modifier = Modifier.height(10.dp))
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                // Check-in
-                                                Row(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalAlignment = Alignment.Top,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    ClockCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(15.dp)
-                                                    )
-                                                    Column {
-                                                        Text(
-                                                            text = if (stay.isOccupied) "CHECK-IN" else "HORARIO CHECK-IN",
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            letterSpacing = 0.6.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1
-                                                        )
-                                                        val checkinVal = if (stay.isOccupied && stay.checkinDate.isNotBlank()) {
-                                                            stay.checkinDate
-                                                        } else {
-                                                            propertyInfo.checkIn.ifBlank { "15:00 a 22:00 hrs" }
-                                                        }
-                                                        Text(
-                                                            text = checkinVal,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            maxLines = 1
-                                                        )
-                                                        Text(
-                                                            text = if (stay.isOccupied) "Recepción ${stay.checkinOfficialTime}" else "Recepción y entrega de llaves",
-                                                            fontSize = 8.5.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                }
-
-                                                Spacer(modifier = Modifier.width(6.dp))
-
-                                                // Check-out
-                                                Row(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalAlignment = Alignment.Top,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    ClockCanvasIcon(
-                                                        color = Color(0xFF00E5FF),
-                                                        modifier = Modifier.size(15.dp)
-                                                    )
-                                                    Column {
-                                                        Text(
-                                                            text = if (stay.isOccupied) "CHECK-OUT" else "HORARIO CHECK-OUT",
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            letterSpacing = 0.6.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1
-                                                        )
-                                                        val checkoutVal = if (stay.isOccupied && stay.checkoutDate.isNotBlank()) {
-                                                            stay.checkoutDate
-                                                        } else {
-                                                            propertyInfo.checkOut.ifBlank { "09:00 a 11:00 hrs" }
-                                                        }
-                                                        Text(
-                                                            text = checkoutVal,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            maxLines = 1
-                                                        )
-                                                        Text(
-                                                            text = if (stay.isOccupied) "Salida ${stay.checkoutOfficialTime}" else "Salida y entrega de llaves",
-                                                            fontSize = 8.5.sp,
-                                                            color = Color(0xFF94A3B8),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // =====================================================
-                                    // COLUMNA 2: "Comodidades"
-                                    // =====================================================
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color(0xCC0D1522))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                            .padding(18.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            // Encabezado con ícono engranaje/estrella dorada
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                GearCanvasIcon(
-                                                    color = Color(0xFFFBBF24),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "Comodidades",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFFBBF24)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(18.dp))
-
-                                            // Fila 1: Estacionamiento techado
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1E2836)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    CarCanvasIcon(
-                                                        color = Color.White,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    Text(
-                                                        text = "Estacionamiento techado",
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    val parkingSub = if (stay.isOccupied && stay.vehiclePlate.isNotBlank() && stay.vehiclePlate != "Estacionamiento Asignado") {
-                                                        "Patente registrada: ${stay.vehiclePlate}"
-                                                    } else {
-                                                        "Dentro del recinto privado techado"
-                                                    }
-                                                    Text(
-                                                        text = parkingSub,
-                                                        fontSize = 10.5.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(18.dp))
-
-                                            // Fila 2: Horario de silencio
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1E2836)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    MoonCanvasIcon(
-                                                        color = Color.White,
-                                                        modifier = Modifier.size(17.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    Text(
-                                                        text = "Horario de silencio",
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    Text(
-                                                        text = "23:00 a 11:00 hrs",
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    Text(
-                                                        text = "Prohibida música fuerte para permitir el descanso",
-                                                        fontSize = 10.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(18.dp))
-
-                                            // Fila 3: Calefacción a leña / Tinaja
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1E2836)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    FlameCanvasIcon(
-                                                        color = Color.White,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                                Column {
-                                                    val flameTitle = if (unit.hasTinaja) "Tinaja y Calefacción a leña" else "Calefacción a leña"
-                                                    Text(
-                                                        text = flameTitle,
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    val flameSub = if (unit.hasTinaja) "Tinaja de madera nativa y estufa Bosca" else "A leña entregada por recepción"
-                                                    Text(
-                                                        text = flameSub,
-                                                        fontSize = 10.5.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                    Text(
-                                                        text = "La leña tiene costo adicional",
-                                                        fontSize = 9.5.sp,
-                                                        color = Color(0xFF64748B)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // Estado de cuenta / saldo si está ocupada
-                                        if (stay.isOccupied) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(
-                                                        if (stay.isPaid) Color(0xFF10B981).copy(alpha = 0.15f)
-                                                        else Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                                    )
-                                                    .border(
-                                                        1.dp,
-                                                        if (stay.isPaid) Color(0xFF10B981) else Color(0xFFF59E0B),
-                                                        RoundedCornerShape(8.dp)
-                                                    )
-                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = if (stay.isPaid) "ESTADO: PAGADO AL DÍA" else "SALDO PENDIENTE",
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (stay.isPaid) Color(0xFF34D399) else Color(0xFFFBBF24)
-                                                    )
-                                                    Text(
-                                                        text = if (stay.isPaid) "$0 CLP" else "$${stay.balance.formatNumber()} CLP",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Black,
-                                                        color = Color.White
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // =====================================================
-                                    // COLUMNA 3: "Conéctate" (Wi-Fi Starlink + WhatsApp Recepción)
-                                    // =====================================================
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(Color(0xCC0D1522))
-                                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                                            .padding(18.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            // Encabezado con ícono Wi-Fi turquesa
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                WifiCanvasIcon(
-                                                    color = Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Text(
-                                                    text = "Conéctate",
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF00E5FF)
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(14.dp))
-
-                                            // Tarjeta blanca con QR de Wi-Fi Starlink de alta visibilidad
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(108.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(Color.White)
-                                                    .padding(6.dp)
-                                            ) {
-                                                QrCodeView(
-                                                    content = "WIFI:T:WPA;S:${stay.wifiNetwork};P:${stay.wifiPassword};;",
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(10.dp))
-
-                                            Text(
-                                                text = "Red: ${stay.wifiNetwork}",
-                                                fontSize = 13.5.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color.White
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Clave: ${stay.wifiPassword}",
-                                                fontSize = 14.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF00E5FF)
-                                            )
-                                        }
-
-                                        // Contacto Recepción WhatsApp
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(1.dp)
-                                                    .background(Color.White.copy(alpha = 0.08f))
-                                            )
-                                            Spacer(modifier = Modifier.height(10.dp))
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                WhatsAppCanvasIcon(
-                                                    color = Color(0xFF00E5FF),
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                                Column {
-                                                    Text(
-                                                        text = "CONTACTO RECEPCIÓN",
-                                                        fontSize = 8.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        letterSpacing = 0.6.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                    Text(
-                                                        text = stay.hostWhatsappFormatted.ifBlank { "+56 9 7269 4597" },
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                    Text(
-                                                        text = "WhatsApp disponible 24/7",
-                                                        fontSize = 9.5.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            selectedTab.startsWith("Fotos") -> {
-                                // VISOR HD DE FOTOS
-                                FullPhotoGalleryView(
-                                    images = allImages,
-                                    selectedIndex = selectedImageIndex,
-                                    cabinName = dynamicCabin?.name ?: unit.name,
-                                    onSelectIndex = { selectedImageIndex = it },
-                                    onBack = { selectedTab = "Reserva" }
-                                )
-                            }
-
-                            selectedTab == "Camas" -> {
-                                // DISTRIBUCIÓN DE DORMITORIOS Y CAMAS
-                                BedroomDistributionView(
-                                    dynamicCabin = dynamicCabin,
-                                    unit = unit
-                                )
-                            }
-
-                            selectedTab == "Video Tour" -> {
-                                // REPRODUCTOR Y DETALLE DE VIDEO TOUR
-                                VideoTourPanelView(
-                                    dynamicCabin = dynamicCabin,
-                                    unit = unit,
-                                    onPlayFullscreen = { isPlayingVideoOverlay = true }
-                                )
-                            }
-                        }
-                    }
-
-                    // ---------------------------------------------------------------------
-                    // FRANJA INFERIOR: 3 TARJETAS INTERACTIVAS (FOTOS, CAMAS, VIDEO TOUR)
-                    // ---------------------------------------------------------------------
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(96.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // TARJETA 1: Fotos · {cantidad}
-                        val photoInteraction = remember { MutableInteractionSource() }
-                        val photoFocused by photoInteraction.collectIsFocusedAsState()
-                        val isPhotoActive = selectedTab.startsWith("Fotos")
-
-                        val photoThumb = remember(realPhotoImages) {
-                            realPhotoImages.firstOrNull { it.contains("1Xbjwgzh") || it.contains("5.jpg") }
-                                ?: realPhotoImages.firstOrNull() ?: propertyInfo.heroBgImage
-                        }
-
-                        InteractiveActionCard(
-                            title = "Fotos · ${allImages.size.coerceAtLeast(1)}",
-                            imageUrl = photoThumb,
-                            icon = { PhotoCanvasIcon(color = Color.White, modifier = Modifier.size(16.dp)) },
-                            isFocused = photoFocused,
-                            isActive = isPhotoActive,
-                            interactionSource = photoInteraction,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedTab = photoTabLabel }
-                        )
-
-                        // TARJETA 2: Camas
-                        val bedInteraction = remember { MutableInteractionSource() }
-                        val bedFocused by bedInteraction.collectIsFocusedAsState()
-                        val isBedActive = selectedTab == "Camas"
-
-                        val bedThumb = remember(realPhotoImages) {
-                            realPhotoImages.firstOrNull { it.contains("14xv4LvW") || it.contains("12.jpg") || it.contains("13.jpg") }
-                                ?: realPhotoImages.getOrNull(1) ?: photoThumb
-                        }
-
-                        InteractiveActionCard(
-                            title = "Camas",
-                            imageUrl = bedThumb,
-                            icon = { BedCanvasIcon(color = Color.White, modifier = Modifier.size(17.dp)) },
-                            isFocused = bedFocused,
-                            isActive = isBedActive,
-                            interactionSource = bedInteraction,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedTab = "Camas" }
-                        )
-
-                        // TARJETA 3: Video Tour
-                        val videoInteraction = remember { MutableInteractionSource() }
-                        val videoFocused by videoInteraction.collectIsFocusedAsState()
-                        val isVideoActive = selectedTab == "Video Tour"
-
-                        val videoThumb = remember(realPhotoImages) {
-                            realPhotoImages.firstOrNull { it.contains("mDPx9WSB") || it.contains("17.jpg") || it.contains("3wJQKv4Z") }
-                                ?: realPhotoImages.getOrNull(2) ?: photoThumb
-                        }
-
-                        InteractiveActionCard(
-                            title = "Video Tour",
-                            imageUrl = videoThumb,
-                            icon = { VideoCameraCanvasIcon(color = Color.White, modifier = Modifier.size(16.dp)) },
-                            showPlayOverlay = true,
-                            isFocused = videoFocused,
-                            isActive = isVideoActive,
-                            interactionSource = videoInteraction,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedTab = "Video Tour" }
-                        )
-                    }
-                }
-
-                // =========================================================================
-                // 3. OVERLAY DE VIDEO A PANTALLA COMPLETA
-                // =========================================================================
                 if (isPlayingVideoOverlay) {
                     val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
                     val videoUrl = "https://www.youtube.com/watch?v=$youtubeId"
@@ -1055,120 +239,821 @@ fun MyStayDialog(
                         videoUrl = videoUrl,
                         onClose = { isPlayingVideoOverlay = false }
                     )
+                } else {
+                // =========================================================================
+                // 1. FONDO CINEMATOGRÁFICO FIJO DE ALTA GAMA (NO CAMBIA A FOTOS DE CAMAS)
+                // =========================================================================
+                Image(
+                    painter = painterResource(id = R.drawable.bg_stay_cinematic),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Scrim lateral izquierdo para bloque de textos, títulos y datos (idéntico a Guía Turística)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                0.00f to Color.Black.copy(alpha = 0.65f),
+                                0.28f to Color.Black.copy(alpha = 0.42f),
+                                0.48f to Color.Black.copy(alpha = 0.15f),
+                                0.65f to Color.Transparent
+                            )
+                        )
+                )
+
+                // Scrim superior para cabecera, filtros y botón cerrar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to Color.Black.copy(alpha = 0.65f),
+                                0.5f to Color.Black.copy(alpha = 0.22f),
+                                1.0f to Color.Transparent
+                            )
+                        )
+                )
+
+                // Scrim inferior para barra de datos prácticos
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to Color.Transparent,
+                                0.40f to Color.Black.copy(alpha = 0.45f),
+                                1.0f to Color.Black.copy(alpha = 0.88f)
+                            )
+                        )
+                )
+
+                // =========================================================================
+                // 3. CAPA PRINCIPAL DE INTERFAZ DE USUARIO (10-FOOT UI PARA TV)
+                // =========================================================================
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 12.dp)
+                ) {
+                    // ---------------------------------------------------------------------
+                    // BARRA SUPERIOR: TÍTULO, CÁPSULA DE NAVEGACIÓN Y BOTÓN CERRAR
+                    // ---------------------------------------------------------------------
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Título y subtítulo superior izquierdo
+                        Column {
+                            Text(
+                                text = "MI ALOJAMIENTO",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(1.dp))
+                            val guestName = formatGuestDisplayName(stay.guestFullName, stay.guestFirstName)
+                            val dateRange = formatFriendlyDateRange(stay.checkinDate, stay.checkoutDate)
+                            val dateSuffix = if (dateRange.isNotBlank()) " · ($dateRange)" else ""
+                            Text(
+                                text = if (stay.isOccupied) "Estadía de $guestName · ${stay.nights} noche${if (stay.nights > 1) "s" else ""}$dateSuffix"
+                                       else "Información y características de tu estadía",
+                                fontSize = 10.5.sp,
+                                color = Color(0xFFBAC4D0)
+                            )
+                        }
+
+                        // Cápsula de Navegación / Filtros horizontales
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.Black.copy(alpha = 0.50f))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(50))
+                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val navTabs = listOf(
+                                "Reserva" to "RESERVA",
+                                "Fotos" to "FOTOS (${realPhotoImages.size.coerceAtLeast(1)})",
+                                "Camas" to "CAMAS",
+                                "Video Tour" to "VIDEO TOUR"
+                            )
+                            navTabs.forEachIndexed { idx, (tabKey, tabLabel) ->
+                                val isSelected = (tabKey == "Reserva" && selectedTab == "Reserva") ||
+                                                 (tabKey == "Fotos" && selectedTab.startsWith("Fotos")) ||
+                                                 (tabKey == "Camas" && selectedTab == "Camas") ||
+                                                 (tabKey == "Video Tour" && selectedTab == "Video Tour")
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val isFocused by interactionSource.collectIsFocusedAsState()
+
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .graphicsLayer {
+                                            val scale = if (isFocused) 1.06f else 1.0f
+                                            scaleX = scale
+                                            scaleY = scale
+                                        }
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            when {
+                                                isFocused -> Color(0xFF00E5FF)
+                                                isSelected -> Color.White.copy(alpha = 0.16f)
+                                                else -> Color.Transparent
+                                            }
+                                        )
+                                        .border(
+                                            width = when {
+                                                isFocused -> 2.dp
+                                                isSelected -> 1.dp
+                                                else -> 0.dp
+                                            },
+                                            color = when {
+                                                isFocused -> Color.White
+                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.60f)
+                                                else -> Color.Transparent
+                                            },
+                                            shape = RoundedCornerShape(50)
+                                        )
+                                        .clickable(
+                                            interactionSource = interactionSource,
+                                            indication = null
+                                        ) {
+                                            selectedTab = when (tabKey) {
+                                                "Fotos" -> photoTabLabel
+                                                "Camas" -> "Camas"
+                                                "Video Tour" -> "Video Tour"
+                                                else -> "Reserva"
+                                            }
+                                        }
+                                        .focusable(interactionSource = interactionSource)
+                                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = tabLabel,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = when {
+                                            isFocused -> FontWeight.Black
+                                            isSelected -> FontWeight.Bold
+                                            else -> FontWeight.Medium
+                                        },
+                                        letterSpacing = 0.4.sp,
+                                        color = when {
+                                            isFocused -> Color(0xFF030712)
+                                            isSelected -> Color.White
+                                            else -> Color(0xFFCBD5E1)
+                                        },
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+
+                        // Botón Cerrar
+                        val closeInteraction = remember { MutableInteractionSource() }
+                        val closeFocused by closeInteraction.collectIsFocusedAsState()
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .focusRequester(closeFocusRequester)
+                                .graphicsLayer {
+                                    val scale = if (closeFocused) 1.08f else 1.0f
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                                .clip(RoundedCornerShape(50))
+                                .background(if (closeFocused) Color.White else Color.Black.copy(alpha = 0.50f))
+                                .border(
+                                    width = if (closeFocused) 2.dp else 1.dp,
+                                    color = if (closeFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.20f),
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickable(
+                                    interactionSource = closeInteraction,
+                                    indication = null
+                                ) {
+                                    onDismiss()
+                                }
+                                .focusable(interactionSource = closeInteraction)
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            CloseCanvasIcon(
+                                color = if (closeFocused) Color(0xFF030712) else Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = "Cerrar",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (closeFocused) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                color = if (closeFocused) Color(0xFF030712) else Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    // ---------------------------------------------------------------------
+                    // CONTENIDO MEDIO: FICHA INFORMATIVA FLOTANTE O VISTAS SECUNDARIAS
+                    // ---------------------------------------------------------------------
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        when {
+                            selectedTab == "Reserva" -> {
+                                ReservationOverviewLayout(
+                                    unit = unit,
+                                    stay = stay,
+                                    dynamicCabin = dynamicCabin,
+                                    photoCount = realPhotoImages.size.coerceAtLeast(1),
+                                    initialFocusRequester = initialActionFocusRequester,
+                                    onNavigateToTab = { selectedTab = if (it == "Fotos") photoTabLabel else it },
+                                    onPlayVideo = { isPlayingVideoOverlay = true }
+                                )
+                            }
+
+                            selectedTab.startsWith("Fotos") -> {
+                                FullPhotoGalleryView(
+                                    images = realPhotoImages,
+                                    selectedIndex = selectedImageIndex,
+                                    cabinName = dynamicCabin?.name ?: unit.name,
+                                    onSelectIndex = { selectedImageIndex = it },
+                                    onBack = { selectedTab = "Reserva" }
+                                )
+                            }
+
+                            selectedTab == "Camas" -> {
+                                BedroomDistributionView(
+                                    dynamicCabin = dynamicCabin,
+                                    unit = unit
+                                )
+                            }
+
+                            selectedTab == "Video Tour" -> {
+                                VideoTourPanelView(
+                                    dynamicCabin = dynamicCabin,
+                                    unit = unit,
+                                    onPlayFullscreen = { isPlayingVideoOverlay = true }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
+}
 
 /**
- * Tarjeta interactiva de la franja inferior (Fotos, Camas, Video Tour).
+ * Vista de resumen de la estadía y cabaña (Pestaña "RESERVA").
+ * Reproduce fielmente la composición cinematográfica y flotante de Guía Turística:
+ * - Ficha flotante sobre el paisaje (Categoría, Título, Descripción boutique, Métricas y Botones de acción).
+ * - Fila inferior refinada de datos prácticos (Check-in, Check-out, Silencio y Cuenta) con divisores finos.
+ * - Tarjeta secundaria interactiva con QR de conexión rápida Wi-Fi Starlink.
  */
 @Composable
-private fun InteractiveActionCard(
-    title: String,
-    imageUrl: String,
-    icon: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    showPlayOverlay: Boolean = false,
-    isFocused: Boolean = false,
-    isActive: Boolean = false,
-    interactionSource: MutableInteractionSource,
-    onClick: () -> Unit
+private fun ReservationOverviewLayout(
+    unit: AccommodationUnit,
+    stay: GuestStayInfo,
+    dynamicCabin: DynamicCabinDetails?,
+    photoCount: Int,
+    initialFocusRequester: FocusRequester,
+    onNavigateToTab: (String) -> Unit,
+    onPlayVideo: () -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .graphicsLayer {
-                val scale = if (isFocused) 1.035f else 1.0f
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF0F172A))
-            .border(
-                width = when {
-                    isFocused -> 2.dp
-                    isActive -> 1.5.dp
-                    else -> 0.8.dp
-                },
-                color = when {
-                    isFocused -> Color(0xFF00E5FF)
-                    isActive -> Color(0xFF00E5FF)
-                    else -> Color.White.copy(alpha = 0.16f)
-                },
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null
-            ) {
-                onClick()
-            }
-            .focusable(interactionSource = interactionSource)
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 10.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Foto de fondo panorámica
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Degradado vertical elegante para legibilidad óptima
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.00f to Color.Transparent,
-                        0.45f to Color.Black.copy(alpha = 0.40f),
-                        1.00f to Color.Black.copy(alpha = 0.88f)
-                    )
-                )
-        )
-
-        // Botón Play central si es Video Tour (fiel a la maqueta)
-        if (showPlayOverlay) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(1.6.dp, Color.White, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                PlayCanvasIcon(color = Color.White, modifier = Modifier.size(15.dp))
-            }
-        }
-
-        // Título e Ícono a la izquierda + Flecha a la derecha en la base de la tarjeta
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        // =========================================================================
+        // BLOQUE MEDIO-ALTO: FICHA FLOTANTE SOBRE EL PAISAJE (ESTILO GUÍA TURÍSTICA)
+        // =========================================================================
+        Column(
+            modifier = Modifier.widthIn(max = 580.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 1. Badges de Categoría y Tinaja en cápsulas refinadas
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                icon()
-                Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isFocused || isActive) Color(0xFF00E5FF) else Color.White
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0x3300E5FF))
+                        .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.85f), RoundedCornerShape(50))
+                        .padding(horizontal = 12.dp, vertical = 3.5.dp)
+                ) {
+                    val cabinType = dynamicCabin?.type?.ifBlank { unit.type } ?: unit.type
+                    Text(
+                        text = "${cabinType.uppercase()} · ${unit.name.uppercase()}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = Color(0xFF00E5FF)
+                    )
+                }
+
+                if (unit.hasTinaja) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0x33F97316))
+                            .border(1.dp, Color(0xFFF97316).copy(alpha = 0.85f), RoundedCornerShape(50))
+                            .padding(horizontal = 10.dp, vertical = 3.5.dp)
+                    ) {
+                        Text(
+                            text = "🪵 TINAJA DE MADERA NATIVA",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = Color(0xFFFB923C)
+                        )
+                    }
+                }
             }
 
-            ChevronRightCanvasIcon(
-                color = if (isFocused || isActive) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.75f),
-                modifier = Modifier.size(13.dp)
+            // 2. Nombre del Alojamiento en tipografía destacada
+            val cabinTitle = dynamicCabin?.name?.ifBlank { unit.name } ?: unit.name
+            Text(
+                text = cabinTitle,
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                lineHeight = 42.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+
+            // 3. Descripción cálida boutique
+            val cabinDesc = dynamicCabin?.description?.ifBlank {
+                "Cabaña boutique totalmente equipada en Licán Ray, inmersa en la tranquilidad del bosque nativo con estufa Bosca a leña, terraza techada y tinaja privada de agua caliente."
+            } ?: "Cabaña boutique totalmente equipada en Licán Ray, inmersa en la tranquilidad del bosque nativo con estufa Bosca a leña, terraza techada y tinaja privada de agua caliente."
+            Text(
+                text = cabinDesc,
+                fontSize = 13.sp,
+                color = Color(0xFFE2E8F0),
+                lineHeight = 18.5.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            // 4. Métricas clave en fila unificada con divisores finos
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                val capacity = dynamicCabin?.capacity ?: unit.capacity
+                val area = dynamicCabin?.area ?: unit.area
+                val bathrooms = dynamicCabin?.bathrooms ?: unit.bathrooms
+
+                // Capacidad
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PersonCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(13.dp))
+                    Text(text = "$capacity pers", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                Box(modifier = Modifier.width(1.dp).height(12.dp).background(Color.White.copy(alpha = 0.35f)))
+
+                // Superficie
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    RulerCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(13.dp))
+                    Text(text = "$area m²", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                Box(modifier = Modifier.width(1.dp).height(12.dp).background(Color.White.copy(alpha = 0.35f)))
+
+                // Baños
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    ShowerCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(13.dp))
+                    Text(text = "$bathrooms baño${if (bathrooms > 1) "s" else ""}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                Box(modifier = Modifier.width(1.dp).height(12.dp).background(Color.White.copy(alpha = 0.35f)))
+
+                // Estacionamiento
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    CarCanvasIcon(color = Color.White.copy(alpha = 0.90f), modifier = Modifier.size(13.dp))
+                    val plate = stay.vehiclePlate.trim()
+                    val parkingLabel = when {
+                        plate.isBlank() || plate.contains("Estacionamiento", true) || plate.length > 14 -> "Estacionamiento techado"
+                        else -> "Patente: $plate"
+                    }
+                    Text(text = parkingLabel, fontSize = 12.sp, color = Color.White.copy(alpha = 0.90f))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 5. Botones de acción principales en fila unificada (exacto a Guía Turística)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                // A. Ver Video Tour
+                val videoInteraction = remember { MutableInteractionSource() }
+                val videoFocused by videoInteraction.collectIsFocusedAsState()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier
+                        .focusRequester(initialFocusRequester)
+                        .graphicsLayer {
+                            val scale = if (videoFocused) 1.08f else 1.0f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (videoFocused) Color(0xFFE50914) else Color(0xCCB91C1C))
+                        .border(
+                            width = if (videoFocused) 2.5.dp else 1.dp,
+                            color = if (videoFocused) Color.White else Color.White.copy(alpha = 0.40f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(interactionSource = videoInteraction, indication = null) {
+                            onPlayVideo()
+                        }
+                        .focusable(interactionSource = videoInteraction)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    PlayCanvasIcon(color = Color.White, modifier = Modifier.size(11.dp))
+                    Text(
+                        text = "Ver Video Tour",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                // B. WhatsApp Recepción
+                val waInteraction = remember { MutableInteractionSource() }
+                val waFocused by waInteraction.collectIsFocusedAsState()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val scale = if (waFocused) 1.08f else 1.0f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (waFocused) Color(0xFF25D366) else Color(0xCC052E16))
+                        .border(
+                            width = if (waFocused) 2.5.dp else 1.2.dp,
+                            color = if (waFocused) Color.White else Color(0xFF25D366).copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(interactionSource = waInteraction, indication = null) {
+                            Toast.makeText(context, "Recepción El Boom: ${stay.hostWhatsappFormatted}", Toast.LENGTH_LONG).show()
+                        }
+                        .focusable(interactionSource = waInteraction)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    WhatsAppCanvasIcon(
+                        color = if (waFocused) Color(0xFF030712) else Color(0xFF25D366),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "WhatsApp Recepción",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (waFocused) Color(0xFF030712) else Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                // C. Fotos
+                val photosInteraction = remember { MutableInteractionSource() }
+                val photosFocused by photosInteraction.collectIsFocusedAsState()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val scale = if (photosFocused) 1.08f else 1.0f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (photosFocused) Color(0xFF00E5FF) else Color(0xCC0D2030))
+                        .border(
+                            width = if (photosFocused) 2.5.dp else 1.2.dp,
+                            color = if (photosFocused) Color.White else Color(0xFF00E5FF).copy(alpha = 0.70f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(interactionSource = photosInteraction, indication = null) {
+                            onNavigateToTab("Fotos")
+                        }
+                        .focusable(interactionSource = photosInteraction)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    PhotoCanvasIcon(
+                        color = if (photosFocused) Color(0xFF030712) else Color(0xFF00E5FF),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "Fotos ($photoCount)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (photosFocused) Color(0xFF030712) else Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                // D. Camas
+                val bedsInteraction = remember { MutableInteractionSource() }
+                val bedsFocused by bedsInteraction.collectIsFocusedAsState()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val scale = if (bedsFocused) 1.08f else 1.0f
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (bedsFocused) Color(0xFF818CF8) else Color(0xCC1A1F36))
+                        .border(
+                            width = if (bedsFocused) 2.5.dp else 1.2.dp,
+                            color = if (bedsFocused) Color.White else Color(0xFF818CF8).copy(alpha = 0.70f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .clickable(interactionSource = bedsInteraction, indication = null) {
+                            onNavigateToTab("Camas")
+                        }
+                        .focusable(interactionSource = bedsInteraction)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    BedCanvasIcon(
+                        color = if (bedsFocused) Color(0xFF030712) else Color(0xFF818CF8),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "Dormitorios y Camas",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (bedsFocused) Color(0xFF030712) else Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
+
+        // =========================================================================
+        // FRANJA INFERIOR: DATOS PRÁCTICOS + TARJETA ACCIÓN QR WI-FI (52dp)
+        // =========================================================================
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 1. Fila de Horario Check-in, Check-out, Silencio y Cuenta
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xD90A0F1D))
+                    .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                // Check-in
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    ClockCanvasIcon(color = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                    Column {
+                        Text(
+                            text = "CHECK-IN",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                        val checkinDateFormatted = formatFriendlyDate(stay.checkinDate)
+                        val checkinTimeStr = if (checkinDateFormatted.isNotBlank()) "$checkinDateFormatted · ${stay.checkinOfficialTime}" else "Desde 15:00 hrs"
+                        Text(
+                            text = checkinTimeStr,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // Divisor fino
+                Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.20f)))
+
+                // Check-out
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    ClockCanvasIcon(color = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
+                    Column {
+                        Text(
+                            text = "CHECK-OUT",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                        val checkoutDateFormatted = formatFriendlyDate(stay.checkoutDate)
+                        val checkoutTimeStr = if (checkoutDateFormatted.isNotBlank()) "$checkoutDateFormatted · ${stay.checkoutOfficialTime}" else "Hasta 11:00 hrs"
+                        Text(
+                            text = checkoutTimeStr,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // Divisor fino
+                Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.20f)))
+
+                // Silencio nocturno
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    MoonCanvasIcon(color = Color(0xFF818CF8), modifier = Modifier.size(16.dp))
+                    Column {
+                        Text(
+                            text = "SILENCIO NOCTURNO",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                        Text(
+                            text = "23:00 a 11:00 hrs",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // Divisor fino
+                Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.20f)))
+
+                // Estado de Cuenta
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    val isPaidClean = stay.isPaid || stay.balance <= 0
+                    val iconColor = if (isPaidClean) Color(0xFF34D399) else Color(0xFFFBBF24)
+                    CheckCanvasIcon(color = iconColor, modifier = Modifier.size(16.dp))
+                    Column {
+                        Text(
+                            text = if (isPaidClean) "ESTADO RESERVA" else "SALDO PENDIENTE",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                        Text(
+                            text = if (isPaidClean) "Cuenta al Día · Pagado" else "$${stay.balance.formatNumber()} CLP",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isPaidClean) Color(0xFF6EE7B7) else Color(0xFFFBBF24),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+
+            // 2. Tarjeta QR Wi-Fi Starlink (Misma altura 52dp, interactiva con foco)
+            val qrInteraction = remember { MutableInteractionSource() }
+            val qrFocused by qrInteraction.collectIsFocusedAsState()
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .height(52.dp)
+                    .graphicsLayer {
+                        val scale = if (qrFocused) 1.05f else 1.0f
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (qrFocused) Color(0xEE132338) else Color(0xD90A0F1D))
+                    .border(
+                        width = if (qrFocused) 2.dp else 1.dp,
+                        color = if (qrFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable(
+                        interactionSource = qrInteraction,
+                        indication = null
+                    ) {
+                        Toast.makeText(context, "Red: ${stay.wifiNetwork} | Clave: ${stay.wifiPassword}", Toast.LENGTH_LONG).show()
+                    }
+                    .focusable(interactionSource = qrInteraction)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.White)
+                        .padding(2.dp)
+                ) {
+                    QrCodeView(
+                        content = "WIFI:T:WPA;S:${stay.wifiNetwork};P:${stay.wifiPassword};;",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = "Wi-Fi Starlink Satelital",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.4.sp,
+                        color = if (qrFocused) Color(0xFF00E5FF) else Color.White,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Red: ${stay.wifiNetwork}",
+                            fontSize = 8.5.sp,
+                            color = Color(0xFFCBD5E1)
+                        )
+                        Text(text = "·", color = Color(0xFF64748B))
+                        Text(
+                            text = "Clave: ${stay.wifiPassword}",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00E5FF)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1528,6 +1413,19 @@ private fun VideoTourPanelView(
 }
 
 /**
+ * Puente JavaScript para notificar de forma asíncrona a Android
+ * cuando finaliza un video en la sección Mi Estadía.
+ */
+private class VideoEndBridgeStay(private val onEnd: () -> Unit) {
+    @JavascriptInterface
+    fun onVideoEnded() {
+        Handler(Looper.getMainLooper()).post {
+            onEnd()
+        }
+    }
+}
+
+/**
  * Overlay de reproducción de video a pantalla completa.
  */
 @OptIn(UnstableApi::class)
@@ -1574,7 +1472,10 @@ private fun FullScreenVideoOverlay(
                             if (youtubeVideoId != null) {
                                 webViewInstance?.evaluateJavascript("seekRelative(10);", null)
                             } else {
-                                exoPlayerInstance?.let { p -> p.seekTo(p.currentPosition + 10_000L) }
+                                exoPlayerInstance?.let { p ->
+                                    val dur = if (p.duration > 0L) p.duration else Long.MAX_VALUE
+                                    p.seekTo(minOf(maxOf(0L, dur - 1000L), p.currentPosition + 10_000L))
+                                }
                             }
                             feedbackAction = "Adelantar +10s ⏩"
                             feedbackTrigger++
@@ -1590,14 +1491,24 @@ private fun FullScreenVideoOverlay(
                             feedbackTrigger++
                             true
                         }
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            // Consumir flechas hacia arriba o hacia abajo para aislar totalmente la TV
+                            true
+                        }
                         else -> false
                     }
                 } else {
-                    false
+                    when (keyEvent.key) {
+                        Key.Back, Key.Escape,
+                        Key.DirectionRight, Key.DirectionLeft,
+                        Key.DirectionUp, Key.DirectionDown -> true
+                        else -> false
+                    }
                 }
             }
     ) {
         if (youtubeVideoId != null) {
+            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             val htmlContent = """
                 <!DOCTYPE html>
                 <html>
@@ -1606,14 +1517,19 @@ private fun FullScreenVideoOverlay(
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
                         html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
-                        #player { width: 100%; height: 100%; border: none; }
+                        #ytIframe { width: 100%; height: 100%; border: none; }
                         .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
                         .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
                         .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
                     </style>
                 </head>
                 <body>
-                    <div id="player"></div>
+                    <iframe id="ytIframe"
+                        src="https://www.youtube-nocookie.com/embed/$youtubeVideoId?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&fs=0&playsinline=1&vq=hd1080&origin=https://elboom.cl" 
+                        title="Video Tour Cabaña" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowfullscreen>
+                    </iframe>
                     <script>
                         var tag = document.createElement('script');
                         tag.src = "https://www.youtube.com/iframe_api";
@@ -1622,27 +1538,26 @@ private fun FullScreenVideoOverlay(
 
                         var player;
                         function onYouTubeIframeAPIReady() {
-                            player = new YT.Player('player', {
-                                height: '100%',
-                                width: '100%',
-                                videoId: '$youtubeVideoId',
-                                playerVars: {
-                                    'autoplay': 1,
-                                    'mute': 0,
-                                    'controls': 0,
-                                    'rel': 0,
-                                    'modestbranding': 1,
-                                    'iv_load_policy': 3,
-                                    'fs': 0,
-                                    'playsinline': 1,
-                                    'origin': 'https://elboom.cl'
-                                },
+                            player = new YT.Player('ytIframe', {
                                 events: {
                                     'onReady': function(e) {
                                         try {
                                             e.target.unMute();
                                             e.target.setVolume(100);
+                                            if (typeof e.target.setPlaybackQuality === 'function') {
+                                                e.target.setPlaybackQuality('hd1080');
+                                            }
                                             e.target.playVideo();
+                                        } catch(err) {}
+                                    },
+                                    'onStateChange': function(e) {
+                                        try {
+                                            // YT.PlayerState.ENDED === 0: Cerrar automáticamente al terminar el video
+                                            if (e.data === 0) {
+                                                if (window.AndroidHost && typeof window.AndroidHost.onVideoEnded === 'function') {
+                                                    window.AndroidHost.onVideoEnded();
+                                                }
+                                            }
                                         } catch(err) {}
                                     }
                                 }
@@ -1652,7 +1567,9 @@ private fun FullScreenVideoOverlay(
                             try {
                                 if (player && typeof player.getCurrentTime === 'function') {
                                     var curr = player.getCurrentTime();
-                                    player.seekTo(Math.max(0, curr + sec), true);
+                                    var dur = (typeof player.getDuration === 'function') ? player.getDuration() : 999999;
+                                    var target = Math.max(0, Math.min(dur > 2 ? dur - 1 : dur, curr + sec));
+                                    player.seekTo(target, true);
                                 }
                             } catch(err) {}
                         }
@@ -1667,10 +1584,9 @@ private fun FullScreenVideoOverlay(
                         webViewInstance?.apply {
                             stopLoading()
                             onPause()
-                            pauseTimers()
+                            resumeTimers()
                             loadUrl("about:blank")
                             clearHistory()
-                            clearCache(true)
                             removeAllViews()
                             (parent as? ViewGroup)?.removeView(this)
                             destroy()
@@ -1684,6 +1600,7 @@ private fun FullScreenVideoOverlay(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        resumeTimers()
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1696,16 +1613,13 @@ private fun FullScreenVideoOverlay(
                             mediaPlaybackRequiresUserGesture = false
                             loadWithOverviewMode = true
                             useWideViewPort = true
-                            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-                            setSupportZoom(false)
-                            builtInZoomControls = false
-                            displayZoomControls = false
-                            allowFileAccess = false
-                            allowContentAccess = false
+                            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                            userAgentString = desktopUserAgent
                         }
                         setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
+                        addJavascriptInterface(VideoEndBridgeStay { onClose() }, "AndroidHost")
                         setOnKeyListener { _, keyCode, event ->
                             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
                                 onClose()
@@ -1718,12 +1632,22 @@ private fun FullScreenVideoOverlay(
                         webViewInstance = this
                     }
                 },
+                update = { webView ->
+                    // Mantener activo
+                },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
             val exoPlayer = remember {
                 ExoPlayer.Builder(context).build().apply {
                     setMediaItem(MediaItem.fromUri(videoUrl))
+                    addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                onClose()
+                            }
+                        }
+                    })
                     prepare()
                     playWhenReady = true
                 }
@@ -1733,8 +1657,11 @@ private fun FullScreenVideoOverlay(
                 exoPlayerInstance = exoPlayer
                 onDispose {
                     exoPlayerInstance = null
-                    exoPlayer.stop()
-                    exoPlayer.release()
+                    try {
+                        exoPlayer.stop()
+                        exoPlayer.clearMediaItems()
+                        exoPlayer.release()
+                    } catch (_: Exception) {}
                     System.gc()
                 }
             }
@@ -1835,6 +1762,55 @@ private fun extractYoutubeVideoId(url: String): String? {
 
 private fun Number.formatNumber(): String {
     return this.toLong().toString().reversed().chunked(3).joinToString(".").reversed()
+}
+
+private fun formatGuestDisplayName(fullName: String, firstName: String): String {
+    if (firstName.isNotBlank()) return firstName
+    if (fullName.isBlank()) return "Huésped registrado"
+    val parts = fullName.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+    return when {
+        parts.size >= 2 -> "${parts[0]} ${parts[1]}"
+        parts.isNotEmpty() -> parts[0]
+        else -> "Huésped registrado"
+    }
+}
+
+private fun formatFriendlyDate(dateStr: String): String {
+    if (dateStr.isBlank()) return ""
+    try {
+        val parts = if (dateStr.contains("-")) dateStr.split("-") else dateStr.split("/")
+        if (parts.size == 3) {
+            val (year, month, day) = if (parts[0].length == 4) {
+                Triple(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
+            } else {
+                Triple(parts[2].toInt(), parts[1].toInt(), parts[0].toInt())
+            }
+            val months = listOf("", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+            val m = months.getOrElse(month) { "" }
+            return "$day $m"
+        }
+    } catch (_: Exception) {}
+    return dateStr
+}
+
+private fun formatFriendlyDateRange(start: String, end: String): String {
+    if (start.isBlank()) return ""
+    try {
+        val sParts = if (start.contains("-")) start.split("-") else start.split("/")
+        val eParts = if (end.contains("-")) end.split("-") else end.split("/")
+        if (sParts.size == 3 && eParts.size == 3) {
+            val (sY, sM, sD) = if (sParts[0].length == 4) Triple(sParts[0].toInt(), sParts[1].toInt(), sParts[2].toInt()) else Triple(sParts[2].toInt(), sParts[1].toInt(), sParts[0].toInt())
+            val (eY, eM, eD) = if (eParts[0].length == 4) Triple(eParts[0].toInt(), eParts[1].toInt(), eParts[2].toInt()) else Triple(eParts[2].toInt(), eParts[1].toInt(), eParts[0].toInt())
+            val monthsFull = listOf("", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+            return if (sM == eM) {
+                "$sD al $eD de ${monthsFull.getOrElse(sM) { "" }}"
+            } else {
+                val monthsShort = listOf("", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+                "$sD ${monthsShort.getOrElse(sM) { "" }} al $eD ${monthsShort.getOrElse(eM) { "" }}"
+            }
+        }
+    } catch (_: Exception) {}
+    return if (start.isNotBlank() && end.isNotBlank()) "$start al $end" else start
 }
 
 // =============================================================================
@@ -2197,3 +2173,26 @@ private fun ChevronRightCanvasIcon(color: Color, modifier: Modifier = Modifier) 
         drawPath(path = path, color = color, style = stroke)
     }
 }
+
+@Composable
+private fun CheckCanvasIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val stroke = Stroke(width = 1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.20f, h * 0.52f)
+            lineTo(w * 0.42f, h * 0.76f)
+            lineTo(w * 0.82f, h * 0.24f)
+        }
+        drawPath(path = path, color = color, style = stroke)
+    }
+}
+
+private data class CabinSpaceItem(
+    val id: String,
+    val title: String,
+    val imageUrl: String,
+    val isVideo: Boolean = false,
+    val isBeds: Boolean = false
+)

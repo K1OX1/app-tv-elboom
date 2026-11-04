@@ -3,18 +3,25 @@ package cl.elboomlicanray.tvlauncher.presentation.modals.info
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -30,8 +37,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +76,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -74,7 +86,6 @@ import coil.compose.AsyncImage
 import cl.elboomlicanray.tvlauncher.R
 import cl.elboomlicanray.tvlauncher.domain.model.DEFAULT_OFFICIAL_ATTRACTIONS
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicTouristAttraction
-import cl.elboomlicanray.tvlauncher.presentation.components.qr.QrCodeView
 import cl.elboomlicanray.tvlauncher.presentation.theme.TvTokens
 
 /**
@@ -166,6 +177,23 @@ fun TouristGuideDialog(
         }
     }
 
+    val carouselListState = rememberLazyListState()
+
+    LaunchedEffect(selectedFilter) {
+        carouselListState.scrollToItem(0)
+    }
+
+    LaunchedEffect(selectedAttraction.id) {
+        val idx = filteredAttractions.indexOfFirst { it.id == selectedAttraction.id }
+        if (idx >= 0) {
+            val firstVisible = carouselListState.firstVisibleItemIndex
+            val visibleCount = carouselListState.layoutInfo.visibleItemsInfo.size
+            if (visibleCount > 0 && (idx < firstVisible || idx >= firstVisible + visibleCount)) {
+                carouselListState.animateScrollToItem(maxOf(0, idx - 1))
+            }
+        }
+    }
+
     // Estado del reproductor de video a pantalla completa
     var isPlayingVideo by remember { mutableStateOf(false) }
 
@@ -181,6 +209,19 @@ fun TouristGuideDialog(
             try {
                 closeFocusRequester.requestFocus()
             } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(isPlayingVideo) {
+        if (!isPlayingVideo) {
+            kotlinx.coroutines.delay(100)
+            try {
+                initialActionFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                try {
+                    closeFocusRequester.requestFocus()
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -217,9 +258,17 @@ fun TouristGuideDialog(
                     .fillMaxSize()
                     .background(Color(0xFF030712))
             ) {
-                // =========================================================================
-                // 1. FOTOGRAFÍA PANORÁMICA DE FONDO A PANTALLA COMPLETA (CINEMATOGRÁFICA)
-                // =========================================================================
+                if (isPlayingVideo) {
+                    val videoUrl = selectedAttraction.videoUrl.ifBlank { selectedAttraction.youtubeUrl }
+                    FullScreenVideoOverlay(
+                        title = selectedAttraction.name,
+                        videoUrl = videoUrl,
+                        onClose = { isPlayingVideo = false }
+                    )
+                } else {
+                    // =========================================================================
+                    // 1. FOTOGRAFÍA PANORÁMICA DE FONDO A PANTALLA COMPLETA (CINEMATOGRÁFICA)
+                    // =========================================================================
                 val backgroundModel = remember(selectedAttraction) {
                     getAttractionBackground(selectedAttraction)
                 }
@@ -480,15 +529,56 @@ fun TouristGuideDialog(
                                 overflow = TextOverflow.Ellipsis
                             )
 
-                            // 3. Descripción breve (2 líneas exactas)
-                            Text(
-                                text = getCleanDescription(selectedAttraction),
-                                fontSize = 13.sp,
-                                color = Color(0xFFE2E8F0),
-                                lineHeight = 18.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            // 3. Descripción detallada con auto-scroll gradual y suave si no cabe
+                            val fullDescription = remember(selectedAttraction) {
+                                getAttractionFullDescription(selectedAttraction)
+                            }
+                            val descScrollState = rememberScrollState()
+
+                            LaunchedEffect(selectedAttraction.id, fullDescription) {
+                                descScrollState.scrollTo(0)
+                                delay(600)
+                                if (descScrollState.maxValue > 0) {
+                                    // 1. Pausa generosa inicial para que el huésped comience a leer con calma
+                                    delay(3500)
+                                    while (isActive) {
+                                        // 2. Avanza gradualmente hacia abajo
+                                        while (isActive && descScrollState.value < descScrollState.maxValue) {
+                                            val stepTarget = (descScrollState.value + 36).coerceAtMost(descScrollState.maxValue)
+                                            descScrollState.animateScrollTo(
+                                                value = stepTarget,
+                                                animationSpec = tween(durationMillis = 800, easing = LinearEasing)
+                                            )
+                                            // Pausa para leer cada nuevo tramo
+                                            delay(2400)
+                                        }
+                                        // 3. Pausa al llegar al final del texto
+                                        delay(4500)
+                                        // 4. Regreso fluido al inicio
+                                        descScrollState.animateScrollTo(
+                                            value = 0,
+                                            animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
+                                        )
+                                        // 5. Pausa en el inicio antes de volver a avanzar
+                                        delay(3000)
+                                    }
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 36.dp, max = 68.dp)
+                                    .verticalScroll(descScrollState)
+                            ) {
+                                Text(
+                                    text = fullDescription,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFE2E8F0),
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            }
 
                             // 4. Valoración y distancia disponibles
                             Row(
@@ -727,20 +817,16 @@ fun TouristGuideDialog(
                     }
 
                     // ---------------------------------------------------------------------
-                    // FRANJA LOWER-MIDDLE: DATOS PRÁCTICOS + TARJETA ACCIÓN QR CELULAR
+                    // FRANJA LOWER-MIDDLE: DATOS PRÁCTICOS (HORARIO, PRECIO Y TEMPORADA)
                     // ---------------------------------------------------------------------
-                    val gmapsUrl = selectedAttraction.googleMapsUrl.ifBlank {
-                        "https://maps.google.com/?q=${selectedAttraction.name.replace(" ", "+")}+Lican+Ray"
-                    }
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 1. Fila de Horario, Precio y Temporada (estilo refinado de 50dp)
+                        // Fila de Horario, Precio y Temporada (estilo refinado de 50dp)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -851,82 +937,23 @@ fun TouristGuideDialog(
                                 }
                             }
                         }
-
-                        // 2. Tarjeta QR elegante con la misma altura (50.dp) y foco interactivo
-                        val qrInteraction = remember { MutableInteractionSource() }
-                        val qrFocused by qrInteraction.collectIsFocusedAsState()
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier
-                                .height(50.dp)
-                                .graphicsLayer {
-                                    val scale = if (qrFocused) 1.05f else 1.0f
-                                    scaleX = scale
-                                    scaleY = scale
-                                }
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (qrFocused) Color(0xEE132338) else Color(0xD90A0F1D))
-                                .border(
-                                    width = if (qrFocused) 2.dp else 1.dp,
-                                    color = if (qrFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.14f),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable(
-                                    interactionSource = qrInteraction,
-                                    indication = null
-                                ) {
-                                    openMapOrShowToast(context, gmapsUrl, selectedAttraction.name)
-                                }
-                                .focusable(interactionSource = qrInteraction)
-                                .padding(horizontal = 12.dp, vertical = 5.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color.White)
-                                    .padding(2.dp)
-                            ) {
-                                QrCodeView(
-                                    content = gmapsUrl,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-
-                            Column {
-                                Text(
-                                    text = strings.scanMapMobile,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    letterSpacing = 0.4.sp,
-                                    color = if (qrFocused) Color(0xFF00E5FF) else Color.White,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                                Spacer(modifier = Modifier.height(1.dp))
-                                Text(
-                                    text = strings.scanForRoute,
-                                    fontSize = 8.5.sp,
-                                    color = Color(0xFF94A3B8),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
                     }
 
                     // ---------------------------------------------------------------------
-                    // FRANJA INFERIOR: CARRUSEL COMPLETO DE DESTINOS DE ANCHO TOTAL
+                    // FRANJA INFERIOR: CARRUSEL TIPO GALERÍA HORIZONTAL CON DESPLAZAMIENTO FLUIDO
+                    // DIMENSIÓN FIJA EXACTA A LA FOTO 1 (NUNCA SE APLASTA NI SE COMPRIME)
                     // ---------------------------------------------------------------------
-                    val useEqualWeights = filteredAttractions.size >= 5
-                    Row(
+                    LazyRow(
+                        state = carouselListState,
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (useEqualWeights) Arrangement.spacedBy(14.dp) else Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        filteredAttractions.forEach { item ->
+                        items(
+                            items = filteredAttractions,
+                            key = { it.id }
+                        ) { item ->
                             val isSelected = item.id == selectedAttraction.id
                             val itemInteraction = remember { MutableInteractionSource() }
                             val isFocused by itemInteraction.collectIsFocusedAsState()
@@ -938,20 +965,15 @@ fun TouristGuideDialog(
                                 }
                             }
 
-                            val cardModifier = if (useEqualWeights) {
-                                Modifier.weight(1f)
-                            } else {
-                                Modifier.width(140.dp)
-                            }
-
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = cardModifier
+                                modifier = Modifier
+                                    .width(180.dp)
                                     .graphicsLayer {
-                                        val scale = if (isFocused) 1.10f else 1.0f
+                                        val scale = if (isFocused) 1.08f else 1.0f
                                         scaleX = scale
                                         scaleY = scale
-                                        alpha = if (isFocused || isSelected) 1.0f else 0.68f
+                                        alpha = if (isFocused || isSelected) 1.0f else 0.72f
                                     }
                                     .clickable(
                                         interactionSource = itemInteraction,
@@ -970,7 +992,7 @@ fun TouristGuideDialog(
                                         .background(Color(0xFF0F172A))
                                         .border(
                                             width = when {
-                                                isFocused -> 3.5.dp
+                                                isFocused -> 3.dp
                                                 isSelected -> 2.dp
                                                 else -> 0.8.dp
                                             },
@@ -1001,7 +1023,7 @@ fun TouristGuideDialog(
                                 ) {
                                     Text(
                                         text = getCarouselDisplayName(item.name),
-                                        fontSize = 10.5.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = when {
                                             isFocused -> FontWeight.Black
                                             isSelected -> FontWeight.Bold
@@ -1034,19 +1056,21 @@ fun TouristGuideDialog(
                         }
                     }
                 }
-
-                // =========================================================================
-                // 4. REPRODUCTOR DE VIDEO A PANTALLA COMPLETA CON CONTROL REMOTO
-                // =========================================================================
-                if (isPlayingVideo) {
-                    val videoUrl = selectedAttraction.videoUrl.ifBlank { selectedAttraction.youtubeUrl }
-                    FullScreenVideoOverlay(
-                        title = selectedAttraction.name,
-                        videoUrl = videoUrl,
-                        onClose = { isPlayingVideo = false }
-                    )
-                }
             }
+        }
+    }
+}
+}
+
+/**
+ * Puente JavaScript para notificar de forma asíncrona y segura a Android
+ * cuando un video finaliza en el reproductor web.
+ */
+private class VideoEndBridge(private val onEnd: () -> Unit) {
+    @JavascriptInterface
+    fun onVideoEnded() {
+        Handler(Looper.getMainLooper()).post {
+            onEnd()
         }
     }
 }
@@ -1057,7 +1081,7 @@ fun TouristGuideDialog(
  * Maneja videos de YouTube mediante embed HTML5 optimizado para hardware de TV,
  * así como enlaces directos (MP4/HLS) mediante Media3 ExoPlayer.
  * Permite cerrar y volver a la misma ficha con el botón "Atrás" del control remoto
- * o mediante el botón "Volver" con foco interactivo.
+ * o automáticamente cuando el video termina.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -1103,7 +1127,10 @@ private fun FullScreenVideoOverlay(
                             if (youtubeVideoId != null) {
                                 webViewInstance?.evaluateJavascript("seekRelative(10);", null)
                             } else {
-                                exoPlayerInstance?.let { p -> p.seekTo(p.currentPosition + 10_000L) }
+                                exoPlayerInstance?.let { p ->
+                                    val dur = if (p.duration > 0L) p.duration else Long.MAX_VALUE
+                                    p.seekTo(minOf(maxOf(0L, dur - 1000L), p.currentPosition + 10_000L))
+                                }
                             }
                             feedbackAction = "Adelantar +10s ⏩"
                             feedbackTrigger++
@@ -1119,14 +1146,25 @@ private fun FullScreenVideoOverlay(
                             feedbackTrigger++
                             true
                         }
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            // Consumir flechas hacia arriba o hacia abajo para aislar totalmente la TV
+                            true
+                        }
                         else -> false
                     }
                 } else {
-                    false
+                    // En KeyUp consumir también las teclas para evitar propagación residual
+                    when (keyEvent.key) {
+                        Key.Back, Key.Escape,
+                        Key.DirectionRight, Key.DirectionLeft,
+                        Key.DirectionUp, Key.DirectionDown -> true
+                        else -> false
+                    }
                 }
             }
     ) {
         if (youtubeVideoId != null) {
+            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             val htmlContent = """
                 <!DOCTYPE html>
                 <html>
@@ -1135,14 +1173,19 @@ private fun FullScreenVideoOverlay(
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
                         html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-                        #player { width: 100%; height: 100%; border: none; }
+                        #ytIframe { width: 100%; height: 100%; border: none; }
                         .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
                         .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
                         .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
                     </style>
                 </head>
                 <body>
-                    <div id="player"></div>
+                    <iframe id="ytIframe"
+                        src="https://www.youtube-nocookie.com/embed/$youtubeVideoId?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&fs=0&playsinline=1&vq=hd1080&origin=https://elboom.cl" 
+                        title="Video Turístico" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowfullscreen>
+                    </iframe>
                     <script>
                         var tag = document.createElement('script');
                         tag.src = "https://www.youtube.com/iframe_api";
@@ -1151,27 +1194,26 @@ private fun FullScreenVideoOverlay(
 
                         var player;
                         function onYouTubeIframeAPIReady() {
-                            player = new YT.Player('player', {
-                                height: '100%',
-                                width: '100%',
-                                videoId: '$youtubeVideoId',
-                                playerVars: {
-                                    'autoplay': 1,
-                                    'mute': 0,
-                                    'controls': 0,
-                                    'rel': 0,
-                                    'modestbranding': 1,
-                                    'iv_load_policy': 3,
-                                    'fs': 0,
-                                    'playsinline': 1,
-                                    'origin': 'https://elboom.cl'
-                                },
+                            player = new YT.Player('ytIframe', {
                                 events: {
                                     'onReady': function(e) {
                                         try {
                                             e.target.unMute();
                                             e.target.setVolume(100);
+                                            if (typeof e.target.setPlaybackQuality === 'function') {
+                                                e.target.setPlaybackQuality('hd1080');
+                                            }
                                             e.target.playVideo();
+                                        } catch(err) {}
+                                    },
+                                    'onStateChange': function(e) {
+                                        try {
+                                            // YT.PlayerState.ENDED === 0: Cerrar automáticamente al terminar el video
+                                            if (e.data === 0) {
+                                                if (window.AndroidHost && typeof window.AndroidHost.onVideoEnded === 'function') {
+                                                    window.AndroidHost.onVideoEnded();
+                                                }
+                                            }
                                         } catch(err) {}
                                     }
                                 }
@@ -1181,7 +1223,9 @@ private fun FullScreenVideoOverlay(
                             try {
                                 if (player && typeof player.getCurrentTime === 'function') {
                                     var curr = player.getCurrentTime();
-                                    player.seekTo(Math.max(0, curr + sec), true);
+                                    var dur = (typeof player.getDuration === 'function') ? player.getDuration() : 999999;
+                                    var target = Math.max(0, Math.min(dur > 2 ? dur - 1 : dur, curr + sec));
+                                    player.seekTo(target, true);
                                 }
                             } catch(err) {}
                         }
@@ -1196,17 +1240,15 @@ private fun FullScreenVideoOverlay(
                         webViewInstance?.apply {
                             stopLoading()
                             onPause()
-                            pauseTimers()
+                            resumeTimers()
                             loadUrl("about:blank")
                             clearHistory()
-                            clearCache(true)
                             removeAllViews()
                             (parent as? ViewGroup)?.removeView(this)
                             destroy()
                         }
                     } catch (_: Exception) {}
                     webViewInstance = null
-                    // Liberación quirúrgica de memoria RAM en TVs de 1GB/2GB
                     System.gc()
                 }
             }
@@ -1214,6 +1256,7 @@ private fun FullScreenVideoOverlay(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        resumeTimers()
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1226,16 +1269,13 @@ private fun FullScreenVideoOverlay(
                             mediaPlaybackRequiresUserGesture = false
                             loadWithOverviewMode = true
                             useWideViewPort = true
-                            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-                            setSupportZoom(false)
-                            builtInZoomControls = false
-                            displayZoomControls = false
-                            allowFileAccess = false
-                            allowContentAccess = false
+                            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                            userAgentString = desktopUserAgent
                         }
                         setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
+                        addJavascriptInterface(VideoEndBridge { onClose() }, "AndroidHost")
                         setOnKeyListener { _, keyCode, event ->
                             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
                                 onClose()
@@ -1258,6 +1298,13 @@ private fun FullScreenVideoOverlay(
             val exoPlayer = remember {
                 ExoPlayer.Builder(context).build().apply {
                     setMediaItem(MediaItem.fromUri(videoUrl))
+                    addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                onClose()
+                            }
+                        }
+                    })
                     prepare()
                     playWhenReady = true
                 }
@@ -1267,8 +1314,11 @@ private fun FullScreenVideoOverlay(
                 exoPlayerInstance = exoPlayer
                 onDispose {
                     exoPlayerInstance = null
-                    exoPlayer.stop()
-                    exoPlayer.release()
+                    try {
+                        exoPlayer.stop()
+                        exoPlayer.clearMediaItems()
+                        exoPlayer.release()
+                    } catch (_: Exception) {}
                     System.gc()
                 }
             }
@@ -1424,16 +1474,18 @@ private fun getAttractionThumbnail(item: DynamicTouristAttraction): Any {
 }
 
 /**
- * Obtiene la descripción concisa en 2 líneas ideal para televisión.
- * Prioriza el texto configurado en la web; si está vacío, recurre a la descripción por defecto.
+ * Obtiene la descripción detallada del destino para televisión.
+ * Prioriza la descripción larga configurada desde el CMS web (descriptionLong).
+ * Si no está disponible, utiliza la descripción corta (descriptionShort) o una por defecto.
  */
-private fun getCleanDescription(attraction: DynamicTouristAttraction): String {
-    val short = attraction.descriptionShort.trim()
-    if (short.isNotBlank()) return short
-    if (attraction.name.contains("Licán", ignoreCase = true)) {
-        return "Un tranquilo balneario a orillas del Lago Calafquén, a 10 minutos de El Boom."
-    }
-    return attraction.descriptionLong.trim()
+private fun getAttractionFullDescription(attraction: DynamicTouristAttraction): String {
+    val longDesc = attraction.descriptionLong.trim()
+    if (longDesc.isNotBlank()) return longDesc
+
+    val shortDesc = attraction.descriptionShort.trim()
+    if (shortDesc.isNotBlank()) return shortDesc
+
+    return "Descubre ${attraction.name}, un hermoso destino imperdible en la zona de Licán Ray y la Región de los Lagos."
 }
 
 private fun cleanHours(raw: String, strings: cl.elboomlicanray.tvlauncher.presentation.i18n.AppStrings): String {

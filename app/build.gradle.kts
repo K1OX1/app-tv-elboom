@@ -16,8 +16,8 @@ android {
         applicationId = "cl.elboomlicanray.tvlauncher"
         minSdk = 26 // Android TV 8.0 Oreo (Soporte óptimo para hardware TV legado y moderno)
         targetSdk = 35
-        versionCode = 40
-        versionName = "1.0.39"
+        versionCode = 45
+        versionName = "1.0.44"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -31,17 +31,29 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import cl.elboomlicanray.tvlauncher.config.QuickAccessAction
 import cl.elboomlicanray.tvlauncher.config.QuickAccessItem
 import cl.elboomlicanray.tvlauncher.data.helper.KioskPermissionHelper
+import cl.elboomlicanray.tvlauncher.domain.model.TvConnectionState
 import cl.elboomlicanray.tvlauncher.presentation.components.AmbientScreensaver
 import cl.elboomlicanray.tvlauncher.presentation.components.feedback.CheckoutAlertBanner
 import cl.elboomlicanray.tvlauncher.presentation.modals.apps.StreamingAppsDialog
 import cl.elboomlicanray.tvlauncher.presentation.modals.info.*
 import cl.elboomlicanray.tvlauncher.presentation.modals.kiosk.ZappingKioskSetupDialog
 import cl.elboomlicanray.tvlauncher.presentation.modals.services.*
+import cl.elboomlicanray.tvlauncher.presentation.modals.setup.InitialSetupDialog
 import cl.elboomlicanray.tvlauncher.presentation.modals.stay.MyStayDialog
 import cl.elboomlicanray.tvlauncher.presentation.modals.stay.PaymentDialog
 import cl.elboomlicanray.tvlauncher.presentation.modals.weather.WeatherWeeklyForecastDialog
@@ -132,6 +144,7 @@ fun HomeScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 coroutineScope.launch {
+                    viewModel.verifyConnectionAndRefresh()
                     performUpdateCheck()
                 }
             }
@@ -144,7 +157,7 @@ fun HomeScreen(
 
     // Foco inicial en el primer acceso ("TV en vivo") y restauración al cerrar modales o salvapantallas
     LaunchedEffect(activeModal, uiState.isScreensaverActive) {
-        if (activeModal == "none" && !uiState.isAdminDialogOpen && !uiState.isScreensaverActive) {
+        if (activeModal == "none" && !uiState.isAdminDialogOpen && !uiState.isScreensaverActive && !uiState.isInitialSetupDialogOpen) {
             try {
                 initialFocusRequester.requestFocus()
             } catch (_: Exception) {}
@@ -205,7 +218,7 @@ fun HomeScreen(
                     top = TvDimens.SafeMarginTop
                 )
         ) {
-            // BARRA SUPERIOR FIJA: ESTADO Y MARCA HOSPITALARIA
+            // BARRA SUPERIOR FIJA: ESTADO, CONEXIÓN Y MARCA HOSPITALARIA
             LauncherTopHeader(
                 currentTime = uiState.currentTimeString,
                 currentDate = uiState.currentDateString.ifEmpty { "Mar 6 May" },
@@ -213,8 +226,11 @@ fun HomeScreen(
                 selectedLanguage = currentLanguage,
                 weatherConditionIcon = uiState.weather.conditionIcon,
                 weatherDescription = uiState.weather.conditionDescription,
+                connectionState = uiState.connectionStatus.state,
+                unitName = uiState.configuredUnit.name,
                 onWeatherClick = { activeModal = "weather" },
                 onLanguageClick = { activeModal = "language" },
+                onOwnerOverrideRequested = { viewModel.openInitialSetupDialog() },
                 onAdminRequested = { viewModel.openAdminDialog() }
             )
 
@@ -425,6 +441,10 @@ fun HomeScreen(
                 isUnitForceClean = viewModel.isUnitForceClean(),
                 onToggleForceClean = { viewModel.toggleUnitForceClean() },
                 onOpenNetworkSettings = { viewModel.openTvNetworkSettings() },
+                onOpenInitialSetup = {
+                    viewModel.closeAdminDialog()
+                    viewModel.openInitialSetupDialog()
+                },
                 onCheckUpdateNow = {
                     coroutineScope.launch {
                         Toast.makeText(context, "Verificando actualizaciones en la nube...", Toast.LENGTH_SHORT).show()
@@ -492,6 +512,20 @@ fun HomeScreen(
                 temperatureText = "${uiState.weather.conditionIcon} ${uiState.weather.temperatureC.toInt()}°C · ${uiState.weather.conditionDescription}",
                 modifier = Modifier.fillMaxSize(),
                 onDismiss = { viewModel.dismissScreensaver() }
+            )
+        }
+
+        // Modal de Configuración Inicial de Cabaña y PIN/Token
+        if (uiState.isInitialSetupDialogOpen) {
+            InitialSetupDialog(
+                initialUnitId = uiState.configuredUnit.id,
+                canCancel = uiState.connectionStatus.state == TvConnectionState.CONNECTED,
+                onConnect = { unitId, token ->
+                    viewModel.validateAndConnectCabin(unitId, token)
+                },
+                onDismiss = {
+                    viewModel.closeInitialSetupDialog()
+                }
             )
         }
     }

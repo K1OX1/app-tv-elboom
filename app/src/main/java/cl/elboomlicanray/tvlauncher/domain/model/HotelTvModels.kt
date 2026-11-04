@@ -85,6 +85,27 @@ val OFFICIAL_ACCOMMODATION_UNITS = listOf(
     )
 )
 
+enum class TvConnectionState {
+    CONNECTED,      // 🟢 200 OK, Token Válido
+    AUTH_ERROR,     // 🔴 401 Unauthorized, Token Inválido o Modificado en admin
+    NO_INTERNET,    // 🔴 Sin conexión a Internet / Timeout
+    UNCONFIGURED    // ⚪ Sin Cabaña / Token guardado en SharedPreferences
+}
+
+@Immutable
+data class ConnectionStatusInfo(
+    val state: TvConnectionState = TvConnectionState.UNCONFIGURED,
+    val unitId: Int = 1,
+    val unitName: String = "Cabaña N°1",
+    val message: String = "Sin configurar",
+    val detail: String = "Ingresa el PIN de acceso para conectar con elboom.cl",
+    val httpCode: Int = 0,
+    val lastVerifiedTimestamp: Long = 0L
+)
+
+class AuthTokenException(message: String = "Se requiere un Token válido. El token fue modificado en administración o es incorrecto.") : Exception(message)
+class NetworkOfflineException(message: String = "Sin conexión a internet") : Exception(message)
+
 enum class ScreenStayState {
     STANDBY,
     CLEANING,

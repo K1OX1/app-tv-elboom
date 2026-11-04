@@ -7,9 +7,13 @@ import cl.elboomlicanray.tvlauncher.data.helper.HotelPreferencesHelper
 import cl.elboomlicanray.tvlauncher.data.repository.AppRepository
 import cl.elboomlicanray.tvlauncher.data.repository.HotelTvRepository
 import cl.elboomlicanray.tvlauncher.domain.model.AppItem
+import cl.elboomlicanray.tvlauncher.domain.model.AuthTokenException
+import cl.elboomlicanray.tvlauncher.domain.model.ConnectionStatusInfo
+import cl.elboomlicanray.tvlauncher.domain.model.NetworkOfflineException
 import cl.elboomlicanray.tvlauncher.domain.model.QuickServiceItem
 import cl.elboomlicanray.tvlauncher.domain.model.ScreenStayState
 import cl.elboomlicanray.tvlauncher.domain.model.ServiceActionType
+import cl.elboomlicanray.tvlauncher.domain.model.TvConnectionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,7 +82,7 @@ class HomeViewModel @Inject constructor(
         loadInitialData()
         startClockUpdates()
         startPeriodicSync()
-        scheduleNoonTransition()
+        scheduleKeyHourTransitions()
         resetScreensaverTimer()
     }
 
@@ -138,10 +142,21 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        refreshHotelAndWeatherData()
-
-        if (!preferencesHelper.isUnitConfigured()) {
-            openAdminDialog()
+        if (!preferencesHelper.hasConfiguredUnitAndToken()) {
+            _uiState.update {
+                it.copy(
+                    isInitialSetupDialogOpen = true,
+                    connectionStatus = ConnectionStatusInfo(
+                        state = TvConnectionState.UNCONFIGURED,
+                        unitId = configuredUnit.id,
+                        unitName = configuredUnit.name,
+                        message = "Sin Configurar",
+                        detail = "Ingresa el PIN de acceso para conectar con elboom.cl"
+                    )
+                )
+            }
+        } else {
+            refreshHotelAndWeatherData()
         }
     }
 
@@ -175,29 +190,111 @@ class HomeViewModel @Inject constructor(
         )
     }
 
+    fun verifyConnectionAndRefresh() {
+        refreshHotelAndWeatherData()
+    }
+
     fun refreshHotelAndWeatherData() {
         val unit = preferencesHelper.getConfiguredUnit()
+        val token = preferencesHelper.getUnitToken()
+
+        if (!preferencesHelper.hasConfiguredUnitAndToken()) {
+            _uiState.update {
+                it.copy(
+                    connectionStatus = ConnectionStatusInfo(
+                        state = TvConnectionState.UNCONFIGURED,
+                        unitId = unit.id,
+                        unitName = unit.name,
+                        message = "Sin Configurar",
+                        detail = "Se requiere configurar el número de cabaña y PIN de acceso."
+                    )
+                )
+            }
+            return
+        }
+
         viewModelScope.launch {
             // 1. Stay en vivo (Nobeds PMS)
             val stayResult = hotelTvRepository.fetchHotelStayData()
-            stayResult.onSuccess { stayInfo ->
-                // Sanitización quirúrgica de privacidad de huéspedes
-                val sanitizedStay = if (!stayInfo.isOccupied) {
-                    stayInfo.copy(
-                        orderId = "",
-                        guestFullName = "",
-                        guestFirstName = "Estimado Huésped",
-                        guestPhone = "",
-                        guestEmail = "",
-                        guestOriginCity = "Chile",
-                        specialRequests = "",
-                        vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}"
-                    )
-                } else {
-                    stayInfo
+            stayResult.fold(
+                onSuccess = { stayInfo ->
+                    // Sanitización quirúrgica de privacidad de huéspedes
+                    val sanitizedStay = if (!stayInfo.isOccupied) {
+                        stayInfo.copy(
+                            orderId = "",
+                            guestFullName = "",
+                            guestFirstName = "Estimado Huésped",
+                            guestPhone = "",
+                            guestEmail = "",
+                            guestOriginCity = "Chile",
+                            specialRequests = "",
+                            vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}"
+                        )
+                    } else {
+                        stayInfo
+                    }
+                    _uiState.update {
+                        it.copy(
+                            guestStay = sanitizedStay,
+                            connectionStatus = ConnectionStatusInfo(
+                                state = TvConnectionState.CONNECTED,
+                                unitId = unit.id,
+                                unitName = unit.name,
+                                message = "Conectado a elboom.cl",
+                                detail = "${unit.name} · Token Válido · Sincronización en vivo",
+                                httpCode = 200,
+                                lastVerifiedTimestamp = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    val nowMs = System.currentTimeMillis()
+                    if (error is AuthTokenException) {
+                        _uiState.update {
+                            it.copy(
+                                connectionStatus = ConnectionStatusInfo(
+                                    state = TvConnectionState.AUTH_ERROR,
+                                    unitId = unit.id,
+                                    unitName = unit.name,
+                                    message = "Token Inválido o Modificado",
+                                    detail = error.message ?: "Se requiere un Token válido. El token fue modificado en administración o es incorrecto.",
+                                    httpCode = 401,
+                                    lastVerifiedTimestamp = nowMs
+                                )
+                            )
+                        }
+                    } else if (error is NetworkOfflineException) {
+                        _uiState.update {
+                            it.copy(
+                                connectionStatus = ConnectionStatusInfo(
+                                    state = TvConnectionState.NO_INTERNET,
+                                    unitId = unit.id,
+                                    unitName = unit.name,
+                                    message = "Sin conexión a internet",
+                                    detail = "No se puede contactar con elboom.cl. Revisa tu conexión de red.",
+                                    httpCode = 0,
+                                    lastVerifiedTimestamp = nowMs
+                                )
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                connectionStatus = ConnectionStatusInfo(
+                                    state = TvConnectionState.NO_INTERNET,
+                                    unitId = unit.id,
+                                    unitName = unit.name,
+                                    message = "Sin conexión a internet",
+                                    detail = error.message ?: "Error de comunicación con el servidor.",
+                                    httpCode = 0,
+                                    lastVerifiedTimestamp = nowMs
+                                )
+                            )
+                        }
+                    }
                 }
-                _uiState.update { it.copy(guestStay = sanitizedStay) }
-            }
+            )
 
             // 2. Clima Lican Ray
             val weatherResult = hotelTvRepository.fetchLicanRayWeather()
@@ -232,43 +329,53 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Polling periódico cada 2 minutos (120 segundos) para reflejar cambios en Nobeds
-     * y rotaciones de huéspedes sin necesidad de reiniciar la app.
+     * Sincronización periódica silenciosa y adaptativa:
+     * - Franja operativa de aseo y rotación (10:45 AM a 15:15 PM): cada 45 segundos,
+     *   para que cuando la camarera marque limpia la cabaña o llegue el nuevo huésped,
+     *   la TV cambie de estado casi en tiempo real.
+     * - Resto del día y noche: cada 3 minutos (180s) ahorrando 100% de CPU y red.
      */
     private fun startPeriodicSync() {
         viewModelScope.launch {
             while (isActive) {
-                delay(120_000L)
+                val cal = Calendar.getInstance()
+                val hour = cal.get(Calendar.HOUR_OF_DAY)
+                val min = cal.get(Calendar.MINUTE)
+                val isTurnaround = (hour in 11..14) || (hour == 10 && min >= 45) || (hour == 15 && min <= 15)
+                val intervalMs = if (isTurnaround) 45_000L else 180_000L
+                delay(intervalMs)
                 refreshHotelAndWeatherData()
             }
         }
     }
 
     /**
-     * Programación de rotación matemática exacta a las 12:00:00 hrs del mediodía.
+     * Transiciones matemáticas exactas en las horas clave de la operación hotelera:
+     * - 11:00:00 AM (Check-out oficial: pasa inmediatamente a modo aseo/preparación)
+     * - 12:00:00 PM (Rotación administrativa de medio día)
+     * - 15:00:00 PM (Check-in oficial: bienvenida automática al nuevo huésped)
+     * - 00:00:00 AM (Medianoche: transición de fechas y verificación de llegadas del día)
      */
-    private fun scheduleNoonTransition() {
+    private fun scheduleKeyHourTransitions() {
         viewModelScope.launch {
             while (isActive) {
-                val calNow = Calendar.getInstance()
-                val calNoon = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, 12)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
+                val now = System.currentTimeMillis()
+                val targets = listOf(
+                    Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 11); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) },
+                    Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) },
+                    Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 15); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) },
+                    Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); add(Calendar.DAY_OF_YEAR, 1) }
+                )
+                val nextTarget = targets
+                    .map { if (it.timeInMillis <= now) it.apply { add(Calendar.DAY_OF_YEAR, 1) } else it }
+                    .minByOrNull { it.timeInMillis }
 
-                if (calNow.after(calNoon)) {
-                    calNoon.add(Calendar.DAY_OF_YEAR, 1)
-                }
-
-                val msUntilNoon = calNoon.timeInMillis - calNow.timeInMillis
-                if (msUntilNoon > 0) {
-                    delay(msUntilNoon)
-                    // En punto a las 12:00:00 rota de inmediato
+                val waitMs = (nextTarget?.timeInMillis ?: (now + 3600_000L)) - now
+                if (waitMs in 100L..86400_000L) {
+                    delay(waitMs)
                     refreshHotelAndWeatherData()
                 } else {
-                    delay(5_000L)
+                    delay(60_000L)
                 }
             }
         }
@@ -486,7 +593,7 @@ class HomeViewModel @Inject constructor(
         drivingTime: String,
         googleMapsUrl: String
     ): Result<String> {
-        return hotelTvRepository.sendAttractionToGuestWhatsApp(
+        val result = hotelTvRepository.sendAttractionToGuestWhatsApp(
             attractionName = attractionName,
             category = category,
             hours = hours,
@@ -494,5 +601,104 @@ class HomeViewModel @Inject constructor(
             drivingTime = drivingTime,
             googleMapsUrl = googleMapsUrl
         )
+        result.onFailure { error ->
+            if (error is AuthTokenException) {
+                _uiState.update {
+                    it.copy(
+                        connectionStatus = ConnectionStatusInfo(
+                            state = TvConnectionState.AUTH_ERROR,
+                            unitId = it.configuredUnit.id,
+                            unitName = it.configuredUnit.name,
+                            message = "Token Inválido o Modificado",
+                            detail = error.message ?: "Se requiere un Token válido.",
+                            httpCode = 401,
+                            lastVerifiedTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+        }
+        return result
+    }
+
+    /**
+     * Valida contra el servidor el número de cabaña y PIN/Token ingresados por el usuario.
+     * Si responde 200 OK, guarda en SharedPreferences, cierra el diálogo y entra al launcher conectado.
+     * Si responde 401, actualiza el estado a error y devuelve la falla.
+     */
+    suspend fun validateAndConnectCabin(unitId: Int, token: String): Result<Boolean> {
+        val trimmedToken = token.trim()
+        val validationResult = hotelTvRepository.validateCabinToken(unitId, trimmedToken)
+        return validationResult.fold(
+            onSuccess = { stayInfo ->
+                preferencesHelper.saveCabinConfiguration(unitId, trimmedToken)
+                val unit = preferencesHelper.getConfiguredUnit()
+                val sanitizedStay = if (!stayInfo.isOccupied) {
+                    stayInfo.copy(
+                        orderId = "",
+                        guestFullName = "",
+                        guestFirstName = "Estimado Huésped",
+                        guestPhone = "",
+                        guestEmail = "",
+                        guestOriginCity = "Chile",
+                        specialRequests = "",
+                        vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}"
+                    )
+                } else stayInfo
+
+                _uiState.update {
+                    it.copy(
+                        configuredUnit = unit,
+                        guestStay = sanitizedStay,
+                        isInitialSetupDialogOpen = false,
+                        connectionStatus = ConnectionStatusInfo(
+                            state = TvConnectionState.CONNECTED,
+                            unitId = unit.id,
+                            unitName = unit.name,
+                            message = "Conectado a elboom.cl",
+                            detail = "Token verificado con éxito · Cabaña vinculada",
+                            httpCode = 200,
+                            lastVerifiedTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+                refreshHotelAndWeatherData()
+                Result.success(true)
+            },
+            onFailure = { error ->
+                if (error is AuthTokenException) {
+                    _uiState.update {
+                        it.copy(
+                            connectionStatus = it.connectionStatus.copy(
+                                state = TvConnectionState.AUTH_ERROR,
+                                message = "PIN Incorrecto",
+                                detail = error.message ?: "El PIN ingresado no coincide con el registrado en el servidor.",
+                                httpCode = 401
+                            )
+                        )
+                    }
+                }
+                Result.failure(error)
+            }
+        )
+    }
+
+    fun openInitialSetupDialog() {
+        _uiState.update { it.copy(isInitialSetupDialogOpen = true) }
+    }
+
+    fun closeInitialSetupDialog() {
+        // Solo permite cerrar si ya hay una configuración válida previa
+        if (preferencesHelper.hasConfiguredUnitAndToken()) {
+            _uiState.update { it.copy(isInitialSetupDialogOpen = false) }
+        }
+    }
+
+    fun openConnectionStatusDialog() {
+        _uiState.update { it.copy(isConnectionStatusDialogOpen = true) }
+    }
+
+    fun closeConnectionStatusDialog() {
+        _uiState.update { it.copy(isConnectionStatusDialogOpen = false) }
     }
 }

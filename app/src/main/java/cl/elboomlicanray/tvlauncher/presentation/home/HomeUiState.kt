@@ -4,12 +4,14 @@ import androidx.compose.runtime.Immutable
 import cl.elboomlicanray.tvlauncher.data.helper.NetworkStatus
 import cl.elboomlicanray.tvlauncher.domain.model.AccommodationUnit
 import cl.elboomlicanray.tvlauncher.domain.model.AppItem
+import cl.elboomlicanray.tvlauncher.domain.model.ConnectionStatusInfo
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicCabinDetails
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicPropertyInfo
 import cl.elboomlicanray.tvlauncher.domain.model.DynamicTouristAttraction
 import cl.elboomlicanray.tvlauncher.domain.model.GuestStayInfo
 import cl.elboomlicanray.tvlauncher.domain.model.OFFICIAL_ACCOMMODATION_UNITS
 import cl.elboomlicanray.tvlauncher.domain.model.QuickServiceItem
+import cl.elboomlicanray.tvlauncher.domain.model.TvConnectionState
 import cl.elboomlicanray.tvlauncher.domain.model.WeatherInfo
 
 /**
@@ -32,6 +34,11 @@ data class HomeUiState(
     val isWifiDialogVisible: Boolean = false,
     val isGuideDialogVisible: Boolean = false,
     val isLoading: Boolean = false,
+
+    // Conexión y Autenticación Continua con elboom.cl
+    val connectionStatus: ConnectionStatusInfo = ConnectionStatusInfo(),
+    val isInitialSetupDialogOpen: Boolean = false,
+    val isConnectionStatusDialogOpen: Boolean = false,
 
     // CMS Dinámico en Vivo
     val currentCabinDetails: DynamicCabinDetails? = null,

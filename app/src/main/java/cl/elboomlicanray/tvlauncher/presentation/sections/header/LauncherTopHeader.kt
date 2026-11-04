@@ -1,7 +1,7 @@
 package cl.elboomlicanray.tvlauncher.presentation.sections.header
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,33 +9,40 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import androidx.compose.foundation.Image
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import cl.elboomlicanray.tvlauncher.R
+import cl.elboomlicanray.tvlauncher.domain.model.TvConnectionState
 import cl.elboomlicanray.tvlauncher.presentation.components.TvIcon
 import cl.elboomlicanray.tvlauncher.presentation.theme.TvTokens
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Encabezado Compacto Superior (LauncherTopHeader).
  *
- * Basado exactamente en la imagen de referencia:
- * - Izquierda: Acento cian + Logotipo oficial El Boom + "Lican Ray"
- * - Derecha: Hora, fecha, clima interactivo y selector de idioma compacto [ 🌐 ES ⌵ ]
+ * Características:
+ * 1. Izquierda: Logotipo oficial El Boom + "Lican Ray" con atajo de dueño (Owner Override):
+ *    - Mantener presionado OK por 3 segundos o 5 clics rápidos abre la configuración de PIN/Cabaña.
+ * 2. Derecha:
+ *    - Indicador Visual de Conexión (Punto Verde / Rojo): Focusable con D-Pad, muestra estado y abre diagnóstico.
+ *    - Hora y Fecha en tiempo real.
+ *    - Cápsula interactiva de clima en vivo de Licán Ray.
+ *    - Selector compacto de idioma [ 🌐 ES ⌵ ].
  */
 @Composable
 fun LauncherTopHeader(
@@ -45,11 +52,17 @@ fun LauncherTopHeader(
     selectedLanguage: String = "ES",
     weatherConditionIcon: String = "☀️",
     weatherDescription: String = "Lican Ray",
+    connectionState: TvConnectionState = TvConnectionState.CONNECTED,
+    unitName: String = "Cabaña N°1",
     modifier: Modifier = Modifier,
     onWeatherClick: () -> Unit = {},
     onLanguageClick: () -> Unit = {},
+    onConnectionIndicatorClick: () -> Unit = {},
+    onOwnerOverrideRequested: () -> Unit = {},
     onAdminRequested: () -> Unit = {}
 ) {
+    val coroutineScope = rememberCoroutineScope()
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -57,10 +70,83 @@ fun LauncherTopHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Logotipo Oficial y Ubicación (Izquierda)
+        // =========================================================================
+        // 1. LOGOTIPO OFICIAL EL BOOM (IZQUIERDA) CON ATAJO DE DUEÑO
+        // =========================================================================
+        val logoInteractionSource = remember { MutableInteractionSource() }
+        val isLogoFocused by logoInteractionSource.collectIsFocusedAsState()
+
+        val logoScale by animateFloatAsState(
+            targetValue = if (isLogoFocused) 1.04f else 1.0f,
+            animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+            label = "logo_scale"
+        )
+
+        var longPressJob by remember { mutableStateOf<Job?>(null) }
+        var consecutiveClickCount by remember { mutableIntStateOf(0) }
+        var lastClickTime by remember { mutableLongStateOf(0L) }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clickable { onAdminRequested() }
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = logoScale
+                    scaleY = logoScale
+                }
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    if (isLogoFocused) Color.White.copy(alpha = 0.08f) else Color.Transparent,
+                    RoundedCornerShape(8.dp)
+                )
+                .border(
+                    width = if (isLogoFocused) 1.5.dp else 0.dp,
+                    color = if (isLogoFocused) TvTokens.CyanNeon else Color.Transparent,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .focusable(interactionSource = logoInteractionSource)
+                .onKeyEvent { keyEvent ->
+                    val code = keyEvent.nativeKeyEvent.keyCode
+                    if (code == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                        code == android.view.KeyEvent.KEYCODE_ENTER ||
+                        code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                    ) {
+                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                            if (longPressJob == null) {
+                                longPressJob = coroutineScope.launch {
+                                    delay(3000L) // 3 segundos continuos para override
+                                    onOwnerOverrideRequested()
+                                }
+                            }
+                            return@onKeyEvent true
+                        } else if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP) {
+                            longPressJob?.cancel()
+                            longPressJob = null
+
+                            val now = System.currentTimeMillis()
+                            if (now - lastClickTime < 2500L) {
+                                consecutiveClickCount++
+                            } else {
+                                consecutiveClickCount = 1
+                            }
+                            lastClickTime = now
+
+                            if (consecutiveClickCount >= 5) {
+                                consecutiveClickCount = 0
+                                onOwnerOverrideRequested()
+                            } else {
+                                onAdminRequested()
+                            }
+                            return@onKeyEvent true
+                        }
+                    }
+                    false
+                }
+                .clickable(
+                    interactionSource = logoInteractionSource,
+                    indication = null,
+                    onClick = onAdminRequested
+                )
         ) {
             Box(
                 modifier = Modifier
@@ -94,12 +180,84 @@ fun LauncherTopHeader(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Derecha: Hora, Fecha, Clima y Selector de Idioma
+        // =========================================================================
+        // 2. DERECHA: INDICADOR CONEXIÓN, HORA, FECHA, CLIMA Y SELECTOR DE IDIOMA
+        // =========================================================================
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Hora y Fecha
+            // =====================================================================
+            // INDICADOR VISUAL DE CONEXIÓN (PUNTO VERDE 🟢 / ROJO 🔴)
+            // =====================================================================
+            val isConnected = connectionState == TvConnectionState.CONNECTED
+            val isAuthError = connectionState == TvConnectionState.AUTH_ERROR
+            val isOffline = connectionState == TvConnectionState.NO_INTERNET
+
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse_trans")
+            val pulseAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.45f,
+                targetValue = 1.0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "dot_pulse_alpha"
+            )
+
+            val statusDotColor = when {
+                isConnected -> Color(0xFF10B981) // Verde esmeralda vivo
+                isAuthError -> Color(0xFFEF4444) // Rojo advertencia
+                isOffline -> Color(0xFFEF4444)   // Rojo sin internet
+                else -> Color(0xFF94A3B8)
+            }
+
+            val statusText = if (isConnected) "Conexión a elboom.cl" else "Conexión al servidor"
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (isConnected) Color.White.copy(alpha = 0.07f) else Color(0xFF7F1D1D).copy(alpha = 0.35f),
+                        RoundedCornerShape(50)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = if (isConnected) Color.White.copy(alpha = 0.16f) else Color(0xFFEF4444).copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(50)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                // Punto de estado discreto
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .graphicsLayer {
+                            alpha = if (isConnected) pulseAlpha else 1.0f
+                        }
+                        .background(statusDotColor)
+                )
+
+                Text(
+                    text = statusText,
+                    color = if (isConnected) Color.White.copy(alpha = 0.85f) else Color(0xFFFCA5A5),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // Separador fino
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(20.dp)
+                    .background(Color(0x33FFFFFF))
+            )
+
+            // HORA Y FECHA
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = currentTime,
@@ -118,11 +276,11 @@ fun LauncherTopHeader(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(24.dp)
+                    .height(20.dp)
                     .background(Color(0x33FFFFFF))
             )
 
-            // Cápsula de Clima
+            // CÁPSULA DE CLIMA INTERACTIVA
             val weatherInteractionSource = remember { MutableInteractionSource() }
             val isWeatherFocused by weatherInteractionSource.collectIsFocusedAsState()
 
@@ -186,7 +344,7 @@ fun LauncherTopHeader(
                 }
             }
 
-            // Selector de Idioma compacto [ 🌐 ES ⌵ ]
+            // SELECTOR DE IDIOMA COMPACTO [ 🌐 ES ⌵ ]
             val langInteractionSource = remember { MutableInteractionSource() }
             val isLangFocused by langInteractionSource.collectIsFocusedAsState()
 

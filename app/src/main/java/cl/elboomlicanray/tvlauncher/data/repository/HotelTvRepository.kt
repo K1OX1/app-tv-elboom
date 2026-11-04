@@ -2,17 +2,21 @@ package cl.elboomlicanray.tvlauncher.data.repository
 
 import android.util.Log
 import cl.elboomlicanray.tvlauncher.data.helper.HotelPreferencesHelper
+import cl.elboomlicanray.tvlauncher.domain.model.AccommodationUnit
+import cl.elboomlicanray.tvlauncher.domain.model.AuthTokenException
+import cl.elboomlicanray.tvlauncher.domain.model.CleaningInfo
+import cl.elboomlicanray.tvlauncher.domain.model.DynamicBedroom
+import cl.elboomlicanray.tvlauncher.domain.model.DynamicCabinDetails
+import cl.elboomlicanray.tvlauncher.domain.model.DynamicFaq
+import cl.elboomlicanray.tvlauncher.domain.model.DynamicPropertyInfo
+import cl.elboomlicanray.tvlauncher.domain.model.DynamicTinajaOption
+import cl.elboomlicanray.tvlauncher.domain.model.DynamicTouristAttraction
 import cl.elboomlicanray.tvlauncher.domain.model.GuestStayInfo
+import cl.elboomlicanray.tvlauncher.domain.model.NetworkOfflineException
+import cl.elboomlicanray.tvlauncher.domain.model.NextGuestInfo
+import cl.elboomlicanray.tvlauncher.domain.model.OFFICIAL_ACCOMMODATION_UNITS
 import cl.elboomlicanray.tvlauncher.domain.model.ScreenStayState
 import cl.elboomlicanray.tvlauncher.domain.model.WeatherInfo
-import cl.elboomlicanray.tvlauncher.domain.model.DynamicCabinDetails
-import cl.elboomlicanray.tvlauncher.domain.model.DynamicTouristAttraction
-import cl.elboomlicanray.tvlauncher.domain.model.DynamicPropertyInfo
-import cl.elboomlicanray.tvlauncher.domain.model.CleaningInfo
-import cl.elboomlicanray.tvlauncher.domain.model.NextGuestInfo
-import cl.elboomlicanray.tvlauncher.domain.model.DynamicBedroom
-import cl.elboomlicanray.tvlauncher.domain.model.DynamicTinajaOption
-import cl.elboomlicanray.tvlauncher.domain.model.DynamicFaq
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -34,11 +38,20 @@ class HotelTvRepository @Inject constructor(
         private const val PROPERTY_URL = "https://elboom.cl/api/property"
     }
 
-    suspend fun fetchHotelStayData(): Result<GuestStayInfo> = withContext(Dispatchers.IO) {
-        val unit = preferencesHelper.getConfiguredUnit()
-        val token = preferencesHelper.getUnitToken()
-        val tokenParam = if (token.isNotBlank()) "&token=$token" else ""
-        val endpoint = "${preferencesHelper.getApiBaseUrl()}?unit=${unit.id}$tokenParam"
+    /**
+     * Valida de forma reactiva un PIN / Token contra el backend oficial https://elboom.cl/api/hotel-tv.
+     * Retorna Result.success(GuestStayInfo) si responde HTTP 200 OK.
+     * Lanza AuthTokenException si responde HTTP 401 Unauthorized o 403.
+     * Lanza NetworkOfflineException si hay error de conectividad o timeout.
+     */
+    suspend fun validateCabinToken(unitId: Int, token: String): Result<GuestStayInfo> = withContext(Dispatchers.IO) {
+        val trimmedToken = token.trim()
+        if (trimmedToken.isBlank()) {
+            return@withContext Result.failure(AuthTokenException("El PIN / Token no puede estar vacío."))
+        }
+        val unit = OFFICIAL_ACCOMMODATION_UNITS.firstOrNull { it.id == unitId }
+            ?: AccommodationUnit(unitId, "", "Cabaña N°$unitId", 6, "Cabaña")
+        val endpoint = "${preferencesHelper.getApiBaseUrl()}?unit=$unitId&token=$trimmedToken"
 
         var connection: HttpURLConnection? = null
         try {
@@ -49,280 +62,323 @@ class HotelTvRepository @Inject constructor(
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Cache-Control", "no-cache")
-                if (token.isNotBlank()) {
-                    setRequestProperty("Authorization", "Bearer $token")
-                }
+                setRequestProperty("Authorization", "Bearer $trimmedToken")
                 setRequestProperty("User-Agent", "ElBoom-SmartTV/${cl.elboomlicanray.tvlauncher.BuildConfig.VERSION_NAME}")
                 useCaches = false
             }
 
-            if (connection.responseCode == 200) {
+            val statusCode = connection.responseCode
+            if (statusCode == 200) {
                 val responseText = connection.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(responseText)
-
-                if (json.optBoolean("success", false)) {
-                    val screenStr = json.optString("screen", "")
-                    val isOccupied = if (screenStr.isNotBlank()) {
-                        screenStr.equals("IN_STAY", ignoreCase = true)
-                    } else {
-                        json.optBoolean("isOccupied", false)
-                    }
-
-                    val wifiObj = json.optJSONObject("wifi")
-                    val rawWifiNet = wifiObj?.optString("wifiNetwork", "") ?: ""
-                    val wifiNetwork = if (rawWifiNet.isNotBlank()) rawWifiNet else (wifiObj?.optString("network", "El Boom Starlink") ?: "El Boom Starlink")
-                    val rawWifiPass = wifiObj?.optString("wifiPassword", "") ?: ""
-                    val wifiPass = if (rawWifiPass.isNotBlank()) rawWifiPass else (wifiObj?.optString("password", "licanray_paraiso") ?: "licanray_paraiso")
-                    val wifiSpeedText = wifiObj?.optString("speedText", "Starlink Satelital Alta Velocidad") ?: "Starlink Satelital Alta Velocidad"
-
-                    val servicesObj = json.optJSONObject("services")
-                    val hostWhatsapp = servicesObj?.optString("hostWhatsapp", "+56972694597") ?: "+56972694597"
-                    val hostWhatsappFormatted = servicesObj?.optString("hostWhatsappFormatted", "+56 9 7269 4597") ?: "+56 9 7269 4597"
-
-                    val cleaningObj = json.optJSONObject("cleaning")
-                    val isDirty = cleaningObj?.optBoolean("isDirty", false) ?: false
-                    val cleaningStatus = cleaningObj?.optString("status", if (isDirty) "SUCIA" else "LIMPIA") ?: if (isDirty) "SUCIA" else "LIMPIA"
-                    val cleaningSheets = cleaningObj?.optInt("sheetsCount", 0) ?: 0
-                    val cleaningNotes = cleaningObj?.optString("notes", "") ?: ""
-                    val cleaningInfo = CleaningInfo(
-                        isDirty = isDirty,
-                        status = cleaningStatus,
-                        sheetsCount = cleaningSheets,
-                        notes = cleaningNotes
-                    )
-
-                    val nextGuestObj = json.optJSONObject("nextGuest")
-                    val nextGuestInfo = if (nextGuestObj != null) {
-                        val ngGuests = nextGuestObj.optJSONObject("guestsCount")
-                        val ngAdults = ngGuests?.optInt("adults", 2) ?: 2
-                        val ngChildren = ngGuests?.optInt("children", 0) ?: 0
-                        val ngTotal = ngGuests?.optInt("total", ngAdults + ngChildren) ?: (ngAdults + ngChildren)
-                        NextGuestInfo(
-                            fullName = nextGuestObj.optString("fullName", ""),
-                            checkinTime = nextGuestObj.optString("checkinTime", "15:00 hrs"),
-                            adultsCount = ngAdults,
-                            childrenCount = ngChildren,
-                            totalGuests = ngTotal,
-                            sheetsCount = nextGuestObj.optInt("sheetsCount", cleaningSheets),
-                            specialRequests = nextGuestObj.optString("specialRequests", "")
-                        )
-                    } else null
-
-                    val isLocallyCheckedIn = if (nextGuestInfo != null && nextGuestInfo.fullName.isNotBlank()) {
-                        preferencesHelper.isUnitGuestCheckedIn(unit.id, nextGuestInfo.fullName)
-                    } else false
-                    val isLocallyClean = preferencesHelper.isUnitForceClean(unit.id)
-
-                    // El alojamiento se considera listo/limpio si el backend reporta LIMPIA, !isDirty, PREPARED, o si localmente se confirmó
-                    val isAlojamientoLimpio = !isDirty ||
-                            cleaningStatus.equals("LIMPIA", ignoreCase = true) ||
-                            screenStr.equals("PREPARED", ignoreCase = true) ||
-                            isLocallyClean ||
-                            isLocallyCheckedIn
-
-                    // Si hay un próximo huésped asignado para hoy y el alojamiento está limpio o el huésped ya está en cabaña:
-                    // ¡Mostrar directamente la pantalla de Bienvenida del Huésped, jamás la ficha de aseo!
-                    if (nextGuestInfo != null && nextGuestInfo.fullName.isNotBlank() && isAlojamientoLimpio && !isOccupied) {
-                        val firstName = nextGuestInfo.fullName.trim().split("\\s+".toRegex()).firstOrNull() ?: "Estimado Huésped"
-                        return@withContext Result.success(
-                            GuestStayInfo(
-                                isOccupied = true,
-                                screenState = ScreenStayState.IN_STAY,
-                                title = "¡Bienvenido, $firstName!",
-                                subtitle = "Alojamientos El Boom · ${nextGuestInfo.fullName}",
-                                orderId = "",
-                                guestFullName = nextGuestInfo.fullName,
-                                guestFirstName = firstName,
-                                guestPhone = "",
-                                guestEmail = "",
-                                guestOriginCity = "Chile",
-                                adultsCount = nextGuestInfo.adultsCount,
-                                childrenCount = nextGuestInfo.childrenCount,
-                                totalGuests = nextGuestInfo.totalGuests,
-                                bookingSource = "Directo Web El Boom",
-                                vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}",
-                                selectedBedsSummary = unit.bedsDescription,
-                                specialRequests = nextGuestInfo.specialRequests,
-                                checkinDate = "Hoy",
-                                checkoutDate = "",
-                                nights = 1,
-                                stayProgress = "Llegada hoy",
-                                totalAmount = 0L,
-                                prepaidAmount = 0L,
-                                balance = 0L,
-                                isPaid = true,
-                                balanceMessage = "Cuenta al día",
-                                isCheckoutDay = false,
-                                checkinOfficialTime = nextGuestInfo.checkinTime,
-                                checkoutOfficialTime = "11:00 hrs",
-                                rotationTime = "12:00 hrs",
-                                checkoutAlert = null,
-                                wifiNetwork = wifiNetwork,
-                                wifiPassword = wifiPass,
-                                wifiSpeedText = wifiSpeedText,
-                                cleaningInfo = cleaningInfo.copy(isDirty = false, status = "LIMPIA"),
-                                nextGuestInfo = nextGuestInfo,
-                                hostWhatsapp = hostWhatsapp,
-                                hostWhatsappFormatted = hostWhatsappFormatted
-                            )
-                        )
-                    }
-
-                    val isCleaning = (screenStr.equals("CLEANING", ignoreCase = true) || (isDirty && !isOccupied)) && !isAlojamientoLimpio
-                    val isPrepared = screenStr.equals("PREPARED", ignoreCase = true) && !isAlojamientoLimpio
-
-                    if (isCleaning) {
-                        return@withContext Result.success(
-                            GuestStayInfo(
-                                isOccupied = false,
-                                screenState = ScreenStayState.CLEANING,
-                                title = "Preparación de alojamiento",
-                                subtitle = "Preparación y Aseo · ${unit.name}",
-                                selectedBedsSummary = unit.bedsDescription,
-                                wifiNetwork = wifiNetwork,
-                                wifiPassword = wifiPass,
-                                wifiSpeedText = wifiSpeedText,
-                                cleaningInfo = cleaningInfo,
-                                nextGuestInfo = nextGuestInfo,
-                                hostWhatsapp = hostWhatsapp,
-                                hostWhatsappFormatted = hostWhatsappFormatted
-                            )
-                        )
-                    }
-
-                    if (isPrepared) {
-                        return@withContext Result.success(
-                            GuestStayInfo(
-                                isOccupied = false,
-                                screenState = ScreenStayState.PREPARED,
-                                title = "Alojamiento preparado",
-                                subtitle = "Listo para recibir a ${nextGuestInfo?.fullName ?: "nuevo huésped"}",
-                                wifiNetwork = wifiNetwork,
-                                wifiPassword = wifiPass,
-                                wifiSpeedText = wifiSpeedText,
-                                cleaningInfo = cleaningInfo,
-                                nextGuestInfo = nextGuestInfo,
-                                hostWhatsapp = hostWhatsapp,
-                                hostWhatsappFormatted = hostWhatsappFormatted
-                            )
-                        )
-                    }
-
-                    if (!isOccupied) {
-                        return@withContext Result.success(
-                            GuestStayInfo(
-                                isOccupied = false,
-                                screenState = ScreenStayState.STANDBY,
-                                title = json.optString("title", "Alojamiento disponible"),
-                                subtitle = json.optString("subtitle", "Alojamientos El Boom · Lican Ray"),
-                                wifiNetwork = wifiNetwork,
-                                wifiPassword = wifiPass,
-                                wifiSpeedText = wifiSpeedText,
-                                cleaningInfo = cleaningInfo,
-                                nextGuestInfo = nextGuestInfo,
-                                hostWhatsapp = hostWhatsapp,
-                                hostWhatsappFormatted = hostWhatsappFormatted
-                            )
-                        )
-                    }
-
-                    val guestObj = json.optJSONObject("guest")
-                    val checkoutObj = json.optJSONObject("checkoutInfo")
-                    val isCheckoutDay = checkoutObj?.optBoolean("isCheckoutDay", false) ?: false
-
-                    val fullName = guestObj?.optString("fullName", "") ?: ""
-                    val firstName = guestObj?.optString("firstName", "Estimado Huésped") ?: "Estimado Huésped"
-                    val guestTitle = guestObj?.optString("title", "¡Bienvenido, $firstName!") ?: "¡Bienvenido, $firstName!"
-                    val orderId = guestObj?.optString("orderId", "") ?: ""
-                    val phone = guestObj?.optString("phone", "") ?: ""
-                    val email = guestObj?.optString("email", "") ?: ""
-                    val originCity = guestObj?.optString("originCity", "Chile") ?: "Chile"
-
-                    val guestsCountObj = guestObj?.optJSONObject("guestsCount")
-                    val adults = guestsCountObj?.optInt("adults", unit.capacity) ?: unit.capacity
-                    val children = guestsCountObj?.optInt("children", 0) ?: 0
-                    val totalGuests = guestsCountObj?.optInt("total", adults + children) ?: (adults + children)
-
-                    val bookingSource = guestObj?.optString("bookingSource", "Directo Web El Boom") ?: "Directo Web El Boom"
-                    val vehiclePlate = guestObj?.optString("vehiclePlate", "Estacionamiento techado Cabaña N°${unit.id}") ?: "Estacionamiento techado Cabaña N°${unit.id}"
-                    val selectedBeds = guestObj?.optString("selectedBedsSummary", unit.bedsDescription) ?: unit.bedsDescription
-                    val specialRequests = guestObj?.optString("specialRequests", "") ?: ""
-
-                    val checkin = guestObj?.optString("checkin", "") ?: ""
-                    val checkout = guestObj?.optString("checkout", "") ?: ""
-                    val nights = guestObj?.optInt("nights", 1) ?: 1
-                    val stayProgress = guestObj?.optString("stayProgress", "Estadía en curso") ?: "Estadía en curso"
-                    val total = guestObj?.optLong("total", 0L) ?: 0L
-                    val prepay = guestObj?.optLong("prepay", 0L) ?: 0L
-                    val balance = guestObj?.optLong("balance", 0L) ?: 0L
-                    val isPaid = guestObj?.optBoolean("isPaid", true) ?: true
-                    val balanceMessage = guestObj?.optString("balanceMessage", "Cuenta al día") ?: "Cuenta al día"
-                    val checkoutAlert = if (checkoutObj?.has("checkoutAlert") == true && !checkoutObj.isNull("checkoutAlert")) checkoutObj.optString("checkoutAlert") else null
-
-                    val screenState = if (isCheckoutDay) ScreenStayState.CHECKOUT_DAY else ScreenStayState.IN_STAY
-
-                    return@withContext Result.success(
-                        GuestStayInfo(
-                            isOccupied = true,
-                            screenState = screenState,
-                            title = guestTitle,
-                            subtitle = "Alojamientos El Boom · $fullName",
-                            orderId = orderId,
-                            guestFullName = fullName,
-                            guestFirstName = firstName,
-                            guestPhone = phone,
-                            guestEmail = email,
-                            guestOriginCity = originCity,
-                            adultsCount = adults,
-                            childrenCount = children,
-                            totalGuests = totalGuests,
-                            bookingSource = bookingSource,
-                            vehiclePlate = vehiclePlate,
-                            selectedBedsSummary = selectedBeds,
-                            specialRequests = specialRequests,
-                            checkinDate = checkin,
-                            checkoutDate = checkout,
-                            nights = nights,
-                            stayProgress = stayProgress,
-                            totalAmount = total,
-                            prepaidAmount = prepay,
-                            balance = balance,
-                            isPaid = isPaid,
-                            balanceMessage = balanceMessage,
-                            isCheckoutDay = isCheckoutDay,
-                            checkinOfficialTime = checkoutObj?.optString("checkinOfficialTime", "15:00 hrs") ?: "15:00 hrs",
-                            checkoutOfficialTime = checkoutObj?.optString("checkoutOfficialTime", "11:00 hrs") ?: "11:00 hrs",
-                            rotationTime = checkoutObj?.optString("rotationTime", "12:00 hrs") ?: "12:00 hrs",
-                            checkoutAlert = checkoutAlert,
-                            wifiNetwork = wifiNetwork,
-                            wifiPassword = wifiPass,
-                            wifiSpeedText = wifiSpeedText,
-                            cleaningInfo = cleaningInfo,
-                            nextGuestInfo = nextGuestInfo,
-                            hostWhatsapp = hostWhatsapp,
-                            hostWhatsappFormatted = hostWhatsappFormatted
-                        )
-                    )
+                val isSuccess = json.optBoolean("success", true) || json.has("screen") || json.has("unit") || json.has("guest")
+                if (isSuccess && !json.has("error")) {
+                    val stayInfo = parseHotelTvJson(json, unit)
+                    return@withContext Result.success(stayInfo)
+                } else {
+                    val errorMsg = json.optString("error", "Error en validación de cabaña")
+                    return@withContext Result.failure(AuthTokenException(errorMsg))
                 }
+            } else if (statusCode == 401 || statusCode == 403) {
+                return@withContext Result.failure(AuthTokenException("PIN / Token incorrecto para ${unit.name} (HTTP $statusCode). Verifica en elboom.cl/admin"))
+            } else {
+                return@withContext Result.failure(Exception("Error en servidor al validar (HTTP $statusCode)"))
             }
-            Result.failure(Exception("HTTP ${connection.responseCode} al consultar Hotel TV"))
         } catch (e: Exception) {
-            Log.w(TAG, "No se pudo sincronizar Hotel TV en vivo: ${e.message}")
-            Result.success(
-                GuestStayInfo(
-                    isOccupied = false,
-                    screenState = ScreenStayState.STANDBY,
-                    title = "Alojamiento disponible",
-                    subtitle = "Alojamientos El Boom · Lican Ray",
-                    wifiNetwork = "El Boom Starlink",
-                    wifiPassword = "licanray_paraiso",
-                    hostWhatsapp = "+56972694597",
-                    hostWhatsappFormatted = "+56 9 7269 4597"
-                )
-            )
+            if (e is AuthTokenException) {
+                return@withContext Result.failure(e)
+            }
+            if (e is java.io.IOException) {
+                return@withContext Result.failure(NetworkOfflineException("Sin conexión a internet o tiempo de espera agotado"))
+            }
+            return@withContext Result.failure(e)
         } finally {
             connection?.disconnect()
         }
+    }
+
+    suspend fun fetchHotelStayData(): Result<GuestStayInfo> = withContext(Dispatchers.IO) {
+        val unit = preferencesHelper.getConfiguredUnit()
+        val token = preferencesHelper.getUnitToken()
+        if (token.isBlank()) {
+            return@withContext Result.failure(AuthTokenException("No hay Token configurado para ${unit.name}."))
+        }
+        val endpoint = "${preferencesHelper.getApiBaseUrl()}?unit=${unit.id}&token=$token"
+
+        var connection: HttpURLConnection? = null
+        try {
+            val url = URL(endpoint)
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 6000
+                readTimeout = 6000
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Cache-Control", "no-cache")
+                setRequestProperty("Authorization", "Bearer $token")
+                setRequestProperty("User-Agent", "ElBoom-SmartTV/${cl.elboomlicanray.tvlauncher.BuildConfig.VERSION_NAME}")
+                useCaches = false
+            }
+
+            val statusCode = connection.responseCode
+            if (statusCode == 200) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(responseText)
+                val isSuccess = json.optBoolean("success", true) || json.has("screen") || json.has("unit") || json.has("guest")
+                if (isSuccess && !json.has("error")) {
+                    val stayInfo = parseHotelTvJson(json, unit)
+                    return@withContext Result.success(stayInfo)
+                }
+            } else if (statusCode == 401 || statusCode == 403) {
+                return@withContext Result.failure(AuthTokenException("Se requiere un Token válido. El token fue modificado en administración o es incorrecto (HTTP $statusCode)."))
+            }
+            Result.failure(Exception("HTTP $statusCode al consultar Hotel TV"))
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo sincronizar Hotel TV en vivo: ${e.message}")
+            if (e is AuthTokenException) {
+                Result.failure(e)
+            } else if (e is java.io.IOException) {
+                Result.failure(NetworkOfflineException("Sin conexión a internet: ${e.message}"))
+            } else {
+                Result.failure(e)
+            }
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun parseHotelTvJson(json: JSONObject, unit: AccommodationUnit): GuestStayInfo {
+        val screenStr = json.optString("screen", "")
+        val isOccupied = if (screenStr.isNotBlank()) {
+            screenStr.equals("IN_STAY", ignoreCase = true)
+        } else {
+            json.optBoolean("isOccupied", false)
+        }
+
+        val wifiObj = json.optJSONObject("wifi")
+        val rawWifiNet = wifiObj?.optString("wifiNetwork", "") ?: ""
+        val wifiNetwork = if (rawWifiNet.isNotBlank()) rawWifiNet else (wifiObj?.optString("network", "El Boom Starlink") ?: "El Boom Starlink")
+        val rawWifiPass = wifiObj?.optString("wifiPassword", "") ?: ""
+        val wifiPass = if (rawWifiPass.isNotBlank()) rawWifiPass else (wifiObj?.optString("password", "licanray_paraiso") ?: "licanray_paraiso")
+        val wifiSpeedText = wifiObj?.optString("speedText", "Starlink Satelital Alta Velocidad") ?: "Starlink Satelital Alta Velocidad"
+
+        val servicesObj = json.optJSONObject("services")
+        val hostWhatsapp = servicesObj?.optString("hostWhatsapp", "+56972694597") ?: "+56972694597"
+        val hostWhatsappFormatted = servicesObj?.optString("hostWhatsappFormatted", "+56 9 7269 4597") ?: "+56 9 7269 4597"
+
+        val cleaningObj = json.optJSONObject("cleaning")
+        val isDirty = cleaningObj?.optBoolean("isDirty", false) ?: false
+        val cleaningStatus = cleaningObj?.optString("status", if (isDirty) "SUCIA" else "LIMPIA") ?: if (isDirty) "SUCIA" else "LIMPIA"
+        val cleaningSheets = cleaningObj?.optInt("sheetsCount", 0) ?: 0
+        val cleaningNotes = cleaningObj?.optString("notes", "") ?: ""
+        val cleaningInfo = CleaningInfo(
+            isDirty = isDirty,
+            status = cleaningStatus,
+            sheetsCount = cleaningSheets,
+            notes = cleaningNotes
+        )
+
+        val nextGuestObj = json.optJSONObject("nextGuest")
+        val nextGuestInfo = if (nextGuestObj != null) {
+            val ngGuests = nextGuestObj.optJSONObject("guestsCount")
+            val ngAdults = ngGuests?.optInt("adults", 2) ?: 2
+            val ngChildren = ngGuests?.optInt("children", 0) ?: 0
+            val ngTotal = ngGuests?.optInt("total", ngAdults + ngChildren) ?: (ngAdults + ngChildren)
+            NextGuestInfo(
+                fullName = nextGuestObj.optString("fullName", ""),
+                checkinTime = nextGuestObj.optString("checkinTime", "15:00 hrs"),
+                adultsCount = ngAdults,
+                childrenCount = ngChildren,
+                totalGuests = ngTotal,
+                sheetsCount = nextGuestObj.optInt("sheetsCount", cleaningSheets),
+                specialRequests = nextGuestObj.optString("specialRequests", "")
+            )
+        } else null
+
+        val isLocallyCheckedIn = if (nextGuestInfo != null && nextGuestInfo.fullName.isNotBlank()) {
+            preferencesHelper.isUnitGuestCheckedIn(unit.id, nextGuestInfo.fullName)
+        } else false
+        val isLocallyClean = preferencesHelper.isUnitForceClean(unit.id)
+
+        // El alojamiento se considera listo/limpio si el backend reporta LIMPIA, !isDirty, PREPARED, o si localmente se confirmó
+        val isAlojamientoLimpio = !isDirty ||
+                cleaningStatus.equals("LIMPIA", ignoreCase = true) ||
+                screenStr.equals("PREPARED", ignoreCase = true) ||
+                isLocallyClean ||
+                isLocallyCheckedIn
+
+        // Si hay un próximo huésped asignado para hoy y el alojamiento está limpio o el huésped ya está en cabaña:
+        // ¡Mostrar directamente la pantalla de Bienvenida del Huésped, jamás la ficha de aseo!
+        if (nextGuestInfo != null && nextGuestInfo.fullName.isNotBlank() && isAlojamientoLimpio && !isOccupied) {
+            val firstName = nextGuestInfo.fullName.trim().split("\\s+".toRegex()).firstOrNull() ?: "Estimado Huésped"
+            return GuestStayInfo(
+                isOccupied = true,
+                screenState = ScreenStayState.IN_STAY,
+                title = "¡Bienvenido, $firstName!",
+                subtitle = "Alojamientos El Boom · ${nextGuestInfo.fullName}",
+                orderId = "",
+                guestFullName = nextGuestInfo.fullName,
+                guestFirstName = firstName,
+                guestPhone = "",
+                guestEmail = "",
+                guestOriginCity = "Chile",
+                adultsCount = nextGuestInfo.adultsCount,
+                childrenCount = nextGuestInfo.childrenCount,
+                totalGuests = nextGuestInfo.totalGuests,
+                bookingSource = "Directo Web El Boom",
+                vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}",
+                selectedBedsSummary = unit.bedsDescription,
+                specialRequests = nextGuestInfo.specialRequests,
+                checkinDate = "Hoy",
+                checkoutDate = "",
+                nights = 1,
+                stayProgress = "Llegada hoy",
+                totalAmount = 0L,
+                prepaidAmount = 0L,
+                balance = 0L,
+                isPaid = true,
+                balanceMessage = "Cuenta al día",
+                isCheckoutDay = false,
+                checkinOfficialTime = nextGuestInfo.checkinTime,
+                checkoutOfficialTime = "11:00 hrs",
+                rotationTime = "12:00 hrs",
+                checkoutAlert = null,
+                wifiNetwork = wifiNetwork,
+                wifiPassword = wifiPass,
+                wifiSpeedText = wifiSpeedText,
+                cleaningInfo = cleaningInfo.copy(isDirty = false, status = "LIMPIA"),
+                nextGuestInfo = nextGuestInfo,
+                hostWhatsapp = hostWhatsapp,
+                hostWhatsappFormatted = hostWhatsappFormatted
+            )
+        }
+
+        val isCleaning = (screenStr.equals("CLEANING", ignoreCase = true) || (isDirty && !isOccupied)) && !isAlojamientoLimpio
+        val isPrepared = screenStr.equals("PREPARED", ignoreCase = true) && !isAlojamientoLimpio
+
+        if (isCleaning) {
+            return GuestStayInfo(
+                isOccupied = false,
+                screenState = ScreenStayState.CLEANING,
+                title = "Preparación de alojamiento",
+                subtitle = "Preparación y Aseo · ${unit.name}",
+                selectedBedsSummary = unit.bedsDescription,
+                wifiNetwork = wifiNetwork,
+                wifiPassword = wifiPass,
+                wifiSpeedText = wifiSpeedText,
+                cleaningInfo = cleaningInfo,
+                nextGuestInfo = nextGuestInfo,
+                hostWhatsapp = hostWhatsapp,
+                hostWhatsappFormatted = hostWhatsappFormatted
+            )
+        }
+
+        if (isPrepared) {
+            return GuestStayInfo(
+                isOccupied = false,
+                screenState = ScreenStayState.PREPARED,
+                title = "Alojamiento preparado",
+                subtitle = "Listo para recibir a ${nextGuestInfo?.fullName ?: "nuevo huésped"}",
+                wifiNetwork = wifiNetwork,
+                wifiPassword = wifiPass,
+                wifiSpeedText = wifiSpeedText,
+                cleaningInfo = cleaningInfo,
+                nextGuestInfo = nextGuestInfo,
+                hostWhatsapp = hostWhatsapp,
+                hostWhatsappFormatted = hostWhatsappFormatted
+            )
+        }
+
+        if (!isOccupied) {
+            return GuestStayInfo(
+                isOccupied = false,
+                screenState = ScreenStayState.STANDBY,
+                title = json.optString("title", "Alojamiento disponible"),
+                subtitle = json.optString("subtitle", "Alojamientos El Boom · Lican Ray"),
+                wifiNetwork = wifiNetwork,
+                wifiPassword = wifiPass,
+                wifiSpeedText = wifiSpeedText,
+                cleaningInfo = cleaningInfo,
+                nextGuestInfo = nextGuestInfo,
+                hostWhatsapp = hostWhatsapp,
+                hostWhatsappFormatted = hostWhatsappFormatted
+            )
+        }
+
+        val guestObj = json.optJSONObject("guest")
+        val checkoutObj = json.optJSONObject("checkoutInfo")
+        val isCheckoutDay = checkoutObj?.optBoolean("isCheckoutDay", false) ?: false
+
+        val fullName = guestObj?.optString("fullName", "") ?: ""
+        val firstName = guestObj?.optString("firstName", "Estimado Huésped") ?: "Estimado Huésped"
+        val guestTitle = guestObj?.optString("title", "¡Bienvenido, $firstName!") ?: "¡Bienvenido, $firstName!"
+        val orderId = guestObj?.optString("orderId", "") ?: ""
+        val phone = guestObj?.optString("phone", "") ?: ""
+        val email = guestObj?.optString("email", "") ?: ""
+        val originCity = guestObj?.optString("originCity", "Chile") ?: "Chile"
+
+        val guestsCountObj = guestObj?.optJSONObject("guestsCount")
+        val adults = guestsCountObj?.optInt("adults", unit.capacity) ?: unit.capacity
+        val children = guestsCountObj?.optInt("children", 0) ?: 0
+        val totalGuests = guestsCountObj?.optInt("total", adults + children) ?: (adults + children)
+
+        val bookingSource = guestObj?.optString("bookingSource", "Directo Web El Boom") ?: "Directo Web El Boom"
+        val vehiclePlate = guestObj?.optString("vehiclePlate", "Estacionamiento techado Cabaña N°${unit.id}") ?: "Estacionamiento techado Cabaña N°${unit.id}"
+        val selectedBeds = guestObj?.optString("selectedBedsSummary", unit.bedsDescription) ?: unit.bedsDescription
+        val specialRequests = guestObj?.optString("specialRequests", "") ?: ""
+
+        val checkin = guestObj?.optString("checkin", "") ?: ""
+        val checkout = guestObj?.optString("checkout", "") ?: ""
+        val nights = guestObj?.optInt("nights", 1) ?: 1
+        val stayProgress = guestObj?.optString("stayProgress", "Estadía en curso") ?: "Estadía en curso"
+        val total = guestObj?.optLong("total", 0L) ?: 0L
+        val prepay = guestObj?.optLong("prepay", 0L) ?: 0L
+        val balance = guestObj?.optLong("balance", 0L) ?: 0L
+        val isPaid = guestObj?.optBoolean("isPaid", true) ?: true
+        val balanceMessage = guestObj?.optString("balanceMessage", "Cuenta al día") ?: "Cuenta al día"
+        val checkoutAlert = if (checkoutObj?.has("checkoutAlert") == true && !checkoutObj.isNull("checkoutAlert")) checkoutObj.optString("checkoutAlert") else null
+
+        val screenState = if (isCheckoutDay) ScreenStayState.CHECKOUT_DAY else ScreenStayState.IN_STAY
+
+        return GuestStayInfo(
+            isOccupied = true,
+            screenState = screenState,
+            title = guestTitle,
+            subtitle = "Alojamientos El Boom · $fullName",
+            orderId = orderId,
+            guestFullName = fullName,
+            guestFirstName = firstName,
+            guestPhone = phone,
+            guestEmail = email,
+            guestOriginCity = originCity,
+            adultsCount = adults,
+            childrenCount = children,
+            totalGuests = totalGuests,
+            bookingSource = bookingSource,
+            vehiclePlate = vehiclePlate,
+            selectedBedsSummary = selectedBeds,
+            specialRequests = specialRequests,
+            checkinDate = checkin,
+            checkoutDate = checkout,
+            nights = nights,
+            stayProgress = stayProgress,
+            totalAmount = total,
+            prepaidAmount = prepay,
+            balance = balance,
+            isPaid = isPaid,
+            balanceMessage = balanceMessage,
+            isCheckoutDay = isCheckoutDay,
+            checkinOfficialTime = checkoutObj?.optString("checkinOfficialTime", "15:00 hrs") ?: "15:00 hrs",
+            checkoutOfficialTime = checkoutObj?.optString("checkoutOfficialTime", "11:00 hrs") ?: "11:00 hrs",
+            rotationTime = checkoutObj?.optString("rotationTime", "12:00 hrs") ?: "12:00 hrs",
+            checkoutAlert = checkoutAlert,
+            wifiNetwork = wifiNetwork,
+            wifiPassword = wifiPass,
+            wifiSpeedText = wifiSpeedText,
+            cleaningInfo = cleaningInfo,
+            nextGuestInfo = nextGuestInfo,
+            hostWhatsapp = hostWhatsapp,
+            hostWhatsappFormatted = hostWhatsappFormatted
+        )
     }
 
     suspend fun fetchLicanRayWeather(): Result<WeatherInfo> = withContext(Dispatchers.IO) {
@@ -716,6 +772,46 @@ class HotelTvRepository @Inject constructor(
                 else -> "4.8"
             }
 
+            val mainImg = listOf(
+                "main_image_url",
+                "image_url",
+                "image",
+                "imageUrl",
+                "foto",
+                "photo",
+                "cover",
+                "thumbnail",
+                "url_imagen",
+                "img"
+            ).firstNotNullOfOrNull { key ->
+                obj.optString(key).takeIf { it.isNotBlank() }
+            } ?: ""
+
+            val descLong = listOf(
+                "description_long",
+                "long_description",
+                "descripcion_larga",
+                "description",
+                "descripcion",
+                "details",
+                "detalles",
+                "info",
+                "body"
+            ).firstNotNullOfOrNull { key ->
+                obj.optString(key).takeIf { it.isNotBlank() }
+            } ?: ""
+
+            val descShort = listOf(
+                "description_short",
+                "short_description",
+                "descripcion_corta",
+                "bajada",
+                "resumen",
+                "summary"
+            ).firstNotNullOfOrNull { key ->
+                obj.optString(key).takeIf { it.isNotBlank() }
+            } ?: ""
+
             list.add(
                 DynamicTouristAttraction(
                     id = obj.optString("id", "${i + 1}"),
@@ -724,8 +820,8 @@ class HotelTvRepository @Inject constructor(
                     subcategory = obj.optString("subcategory", ""),
                     distanceKm = obj.optString("distance_km", ""),
                     drivingTime = obj.optString("driving_time", ""),
-                    descriptionShort = obj.optString("description_short", ""),
-                    descriptionLong = obj.optString("description_long", ""),
+                    descriptionShort = descShort,
+                    descriptionLong = descLong,
                     googleMapsUrl = obj.optString("google_maps_url", ""),
                     phone = obj.optString("phone", ""),
                     price = obj.optString("price", ""),
@@ -734,7 +830,7 @@ class HotelTvRepository @Inject constructor(
                     difficulty = obj.optString("difficulty", ""),
                     recommendedByElBoom = rec,
                     tags = tagsList,
-                    mainImageUrl = obj.optString("main_image_url", ""),
+                    mainImageUrl = mainImg,
                     gallery = galleryList,
                     youtubeUrl = video,
                     videoUrl = video,
@@ -948,6 +1044,10 @@ class HotelTvRepository @Inject constructor(
             }
 
             val statusCode = connection.responseCode
+            if (statusCode == 401 || statusCode == 403) {
+                return@withContext Result.failure(AuthTokenException("Se requiere un Token válido. El token fue modificado en administración o es incorrecto (HTTP $statusCode)."))
+            }
+
             val responseStream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = responseStream?.bufferedReader()?.use { it.readText() } ?: ""
 
@@ -978,7 +1078,13 @@ class HotelTvRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error enviando atractivo a WhatsApp: ${e.message}", e)
-            Result.failure(Exception(e.message ?: "Error de conexión con el servidor"))
+            if (e is AuthTokenException) {
+                Result.failure(e)
+            } else if (e is java.io.IOException) {
+                Result.failure(NetworkOfflineException("Sin conexión a internet al enviar mensaje"))
+            } else {
+                Result.failure(Exception(e.message ?: "Error de conexión con el servidor"))
+            }
         } finally {
             connection?.disconnect()
         }

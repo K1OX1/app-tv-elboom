@@ -34,7 +34,6 @@ class HotelPreferencesHelper @Inject constructor(
         private const val KEY_SELECTED_LANGUAGE = "hotel_tv_selected_language"
         private const val DEFAULT_LANGUAGE = "ES"
         private const val KEY_UNIT_TOKEN = "hotel_tv_unit_token"
-        private const val DEFAULT_UNIT_TOKEN = "4f9b8c2d1e0a7f3b6c5d8e9f2a1b4c7d0e3f6a9b2c5d8e1f4a7b0c3d6e9f2a5b"
 
         // Nombres de archivos de caché en disco para mantener el heap de RAM limpio
         private const val FILE_ACCOMMODATIONS = "cms_accommodations.json"
@@ -116,6 +115,14 @@ class HotelPreferencesHelper @Inject constructor(
         return prefs.contains(KEY_UNIT_ID)
     }
 
+    /**
+     * Verifica si el televisor tiene una cabaña asignada Y un token de acceso guardado en SharedPreferences.
+     * CERO TOKENS QUEMADOS: Si no hay token guardado localmente, retorna false obligando a la configuración inicial.
+     */
+    fun hasConfiguredUnitAndToken(): Boolean {
+        return prefs.contains(KEY_UNIT_ID) && getUnitToken().isNotBlank()
+    }
+
     fun getConfiguredUnitId(): Int {
         return prefs.getInt(KEY_UNIT_ID, DEFAULT_UNIT_ID)
     }
@@ -130,29 +137,36 @@ class HotelPreferencesHelper @Inject constructor(
             ?: OFFICIAL_ACCOMMODATION_UNITS.first()
     }
 
+    /**
+     * Obtiene el token de cabaña guardado exclusivamente en SharedPreferences locales.
+     * NUNCA devuelve un token quemado en el código fuente.
+     */
     fun getUnitToken(): String {
-        val custom = prefs.getString(KEY_UNIT_TOKEN, null)
-        if (!custom.isNullOrBlank()) {
-            return custom
-        }
-        val unitId = getConfiguredUnitId()
-        return getUnitSpecificToken(unitId)
-    }
-
-    fun getUnitSpecificToken(unitId: Int): String {
-        return when (unitId) {
-            1 -> "b8c8575a908be1b2"
-            2 -> "0f7c759d4bdbe268"
-            3 -> "11149e4b3025409e"
-            4 -> "a9ad50e848ea6caa"
-            5 -> "b91d0fbbd6a8c938"
-            6 -> "cb9d368d959a0d8d"
-            else -> DEFAULT_UNIT_TOKEN
-        }
+        return prefs.getString(KEY_UNIT_TOKEN, "")?.trim() ?: ""
     }
 
     fun setUnitToken(token: String) {
         prefs.edit().putString(KEY_UNIT_TOKEN, token.trim()).apply()
+    }
+
+    /**
+     * Guarda la cabaña física y su token en SharedPreferences de forma síncrona e inmediata.
+     */
+    fun saveCabinConfiguration(unitId: Int, token: String) {
+        prefs.edit()
+            .putInt(KEY_UNIT_ID, unitId)
+            .putString(KEY_UNIT_TOKEN, token.trim())
+            .commit()
+    }
+
+    /**
+     * Limpia la configuración de cabaña y token para forzar re-configuración.
+     */
+    fun clearCabinConfiguration() {
+        prefs.edit()
+            .remove(KEY_UNIT_ID)
+            .remove(KEY_UNIT_TOKEN)
+            .commit()
     }
 
     // =========================================================================

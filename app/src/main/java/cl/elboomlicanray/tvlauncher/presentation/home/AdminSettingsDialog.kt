@@ -95,6 +95,7 @@ fun AdminSettingsDialog(
     isUnitForceClean: Boolean = false,
     onToggleForceClean: () -> Unit = {},
     onOpenNetworkSettings: () -> Unit = {},
+    onOpenInitialSetup: () -> Unit = {},
     isPinLockedOut: () -> Boolean = { false },
     getLockoutRemainingSeconds: () -> Int = { 0 },
     onDismiss: () -> Unit
@@ -497,17 +498,23 @@ fun AdminSettingsDialog(
                                                 fontSize = 13.sp,
                                                 color = TextMuted
                                             )
-                                            AdminSmallActionButton(
-                                                label = if (isUnitForceClean) "🟢 Alojamiento LIMPIO (Activo)" else "🧹 Marcar LIMPIO / Modo Huésped",
-                                                onClick = {
-                                                    onToggleForceClean()
-                                                    Toast.makeText(
-                                                        context,
-                                                        if (isUnitForceClean) "Modo automático de aseo restaurado." else "¡Alojamiento marcado LIMPIO! Mostrando bienvenida al huésped.",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
-                                            )
+                                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                AdminSmallActionButton(
+                                                    label = "🔑 Cambiar PIN de Cabaña",
+                                                    onClick = onOpenInitialSetup
+                                                )
+                                                AdminSmallActionButton(
+                                                    label = if (isUnitForceClean) "🟢 Alojamiento LIMPIO (Activo)" else "🧹 Marcar LIMPIO / Modo Huésped",
+                                                    onClick = {
+                                                        onToggleForceClean()
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (isUnitForceClean) "Modo automático de aseo restaurado." else "¡Alojamiento marcado LIMPIO! Mostrando bienvenida al huésped.",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                )
+                                            }
                                         }
 
                                         LazyVerticalGrid(
