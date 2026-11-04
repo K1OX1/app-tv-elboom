@@ -28,16 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
@@ -91,66 +85,27 @@ fun PersistentLiveTvFrame(
     val fallbackUri = "https://origin.dpsgo.com/ssai/event/GI-9cp_bT8KcerLpZwkuhw/master.m3u8"
     var isVideoReady by remember { mutableStateOf(false) }
 
-    val exoPlayer = remember {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(1000, 3000, 500, 1000)
-            .setBackBuffer(0, false)
-            .build()
-
-        val trackSelector = DefaultTrackSelector(context).apply {
-            parameters = buildUponParameters()
-                .setMaxVideoSize(854, 480)
-                .setMaxVideoFrameRate(30)
-                .setMaxVideoBitrate(1_200_000)
-                .setPreferredAudioLanguage("spa")
-                .setForceLowestBitrate(true)
-                .build()
-        }
-
-        val audioAttributes = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-            .setUsage(C.USAGE_MEDIA)
-            .build()
-
-        val renderersFactory = DefaultRenderersFactory(context)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-            .setEnableDecoderFallback(true)
-
-        ExoPlayer.Builder(context, renderersFactory)
-            .setLoadControl(loadControl)
-            .setTrackSelector(trackSelector)
-            .setAudioAttributes(audioAttributes, false)
-            .build().apply {
-                repeatMode = Player.REPEAT_MODE_OFF
-                playWhenReady = true
-                volume = 1.0f
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-            }
+    val exoPlayer = remember(context) {
+        cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context, preview = true)
     }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var isResumed by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))
+    }
+    val playbackAllowed by rememberUpdatedState(isPlaybackActive && isResumed)
+    var fallbackAttempted by remember(activeChStream) { mutableStateOf(false) }
 
-    LaunchedEffect(activeChStream) {
+    LaunchedEffect(activeChStream, isPlaybackActive, isResumed) {
         isVideoReady = false
-        try {
+        if (isPlaybackActive && isResumed) {
+            fallbackAttempted = false
             exoPlayer.setMediaItem(MediaItem.fromUri(activeChStream))
             exoPlayer.prepare()
-            if (isPlaybackActive) exoPlayer.play()
-        } catch (_: Exception) {}
-    }
-
-    LaunchedEffect(isPlaybackActive) {
-        try {
-            if (isPlaybackActive) {
-                if (exoPlayer.playbackState == Player.STATE_IDLE) {
-                    exoPlayer.setMediaItem(MediaItem.fromUri(activeChStream))
-                    exoPlayer.prepare()
-                }
-                exoPlayer.play()
-            } else {
-                // Liberar de inmediato el decodificador MediaCodec de hardware para evitar colisiones
-                exoPlayer.stop()
-                exoPlayer.clearMediaItems()
-            }
-        } catch (_: Exception) {}
+            exoPlayer.play()
+        } else {
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -162,39 +117,22 @@ fun PersistentLiveTvFrame(
         }
     }
 
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE,
-                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
-                    try {
-                        exoPlayer.stop()
-                        exoPlayer.clearMediaItems()
-                    } catch (_: Exception) {}
-                }
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
-                    try {
-                        exoPlayer.setMediaItem(MediaItem.fromUri(activeChStream))
-                        exoPlayer.prepare()
-                        exoPlayer.play()
-                    } catch (_: Exception) {}
-                }
-                else -> {}
-            }
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            isResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     DisposableEffect(Unit) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) isVideoReady = true
+                isVideoReady = playbackState == Player.STATE_READY
             }
             override fun onPlayerError(error: PlaybackException) {
+                if (!playbackAllowed || fallbackAttempted) return
+                fallbackAttempted = true
                 try {
                     exoPlayer.setMediaItem(MediaItem.fromUri(fallbackUri))
                     exoPlayer.prepare()

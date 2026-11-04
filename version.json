@@ -1,8 +1,8 @@
 {
-  "versionCode": 45,
-  "versionName": "1.0.44",
-  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.44/app-release.apk",
-  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.44/app-release.apk",
-  "changelog": "Guía turística optimizada: descripción larga con auto-avance continuo, remoción de tarjeta QR y corrección de carrusel de destinos (v1.0.44 build 45)",
-  "sha256": "6913CEC90DB2C208B877F88C6B84673D62BE385A99B07EF58111785E93A4DA77"
+  "versionCode": 46,
+  "versionName": "1.0.45",
+  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.45/app-release.apk",
+  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.45/app-release.apk",
+  "changelog": "Reproductor de video TV ultra-optimizado: aceleración por hardware GPU (LAYER_TYPE_HARDWARE), API IFrame de pase único con div id player, eliminación de User-Agent de escritorio y bitrate adaptativo sin congelamientos (v1.0.45 build 46)",
+  "sha256": "621BCBB9C9A7AB28B3D74F645A702CC093C7BD0DAE94C700F28378F5DAF3975A"
 }

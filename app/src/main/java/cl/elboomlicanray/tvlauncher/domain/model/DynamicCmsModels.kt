@@ -34,7 +34,8 @@ data class DynamicCabinDetails(
     val images: List<String> = emptyList(),
     val amenities: List<String> = emptyList(),
     val tinajaDetails: String = "",
-    val bedrooms: List<DynamicBedroom> = emptyList()
+    val bedrooms: List<DynamicBedroom> = emptyList(),
+    val videoUrl: String = ""
 )
 
 @Immutable

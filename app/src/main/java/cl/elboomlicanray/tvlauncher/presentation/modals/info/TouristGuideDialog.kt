@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -1102,6 +1103,26 @@ private fun FullScreenVideoOverlay(
     val youtubeVideoId = remember(videoUrl) { extractYoutubeVideoId(videoUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var exoPlayerInstance by remember { mutableStateOf<ExoPlayer?>(null) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    exoPlayerInstance?.pause()
+                    webViewInstance?.evaluateJavascript("if (player && player.pauseVideo) player.pauseVideo();", null)
+                    webViewInstance?.onPause()
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    webViewInstance?.onResume()
+                    webViewInstance?.evaluateJavascript("if (player && player.playVideo) player.playVideo();", null)
+                    exoPlayerInstance?.play()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var feedbackAction by remember { mutableStateOf<String?>(null) }
     var feedbackTrigger by remember { mutableLongStateOf(0L) }
 
@@ -1164,7 +1185,6 @@ private fun FullScreenVideoOverlay(
             }
     ) {
         if (youtubeVideoId != null) {
-            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             val htmlContent = """
                 <!DOCTYPE html>
                 <html>
@@ -1173,42 +1193,48 @@ private fun FullScreenVideoOverlay(
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
                         html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-                        #ytIframe { width: 100%; height: 100%; border: none; }
+                        #player { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
                         .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
                         .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
                         .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
                     </style>
                 </head>
                 <body>
-                    <iframe id="ytIframe"
-                        src="https://www.youtube-nocookie.com/embed/$youtubeVideoId?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&fs=0&playsinline=1&vq=hd1080&origin=https://elboom.cl" 
-                        title="Video Turístico" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen>
-                    </iframe>
+                    <div id="player"></div>
                     <script>
                         var tag = document.createElement('script');
                         tag.src = "https://www.youtube.com/iframe_api";
-                        var first = document.getElementsByTagName('script')[0];
-                        first.parentNode.insertBefore(tag, first);
+                        var firstScriptTag = document.getElementsByTagName('script')[0];
+                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
                         var player;
                         function onYouTubeIframeAPIReady() {
-                            player = new YT.Player('ytIframe', {
+                            player = new YT.Player('player', {
+                                height: '100%',
+                                width: '100%',
+                                videoId: '$youtubeVideoId',
+                                playerVars: {
+                                    'autoplay': 1,
+                                    'controls': 0,
+                                    'rel': 0,
+                                    'showinfo': 0,
+                                    'iv_load_policy': 3,
+                                    'modestbranding': 1,
+                                    'playsinline': 1,
+                                    'fs': 0,
+                                    'disablekb': 1,
+                                    'origin': 'https://www.youtube.com'
+                                },
                                 events: {
                                     'onReady': function(e) {
                                         try {
                                             e.target.unMute();
                                             e.target.setVolume(100);
-                                            if (typeof e.target.setPlaybackQuality === 'function') {
-                                                e.target.setPlaybackQuality('hd1080');
-                                            }
                                             e.target.playVideo();
                                         } catch(err) {}
                                     },
                                     'onStateChange': function(e) {
                                         try {
-                                            // YT.PlayerState.ENDED === 0: Cerrar automáticamente al terminar el video
                                             if (e.data === 0) {
                                                 if (window.AndroidHost && typeof window.AndroidHost.onVideoEnded === 'function') {
                                                     window.AndroidHost.onVideoEnded();
@@ -1219,6 +1245,7 @@ private fun FullScreenVideoOverlay(
                                 }
                             });
                         }
+
                         function seekRelative(sec) {
                             try {
                                 if (player && typeof player.getCurrentTime === 'function') {
@@ -1238,6 +1265,7 @@ private fun FullScreenVideoOverlay(
                 onDispose {
                     try {
                         webViewInstance?.apply {
+                            removeJavascriptInterface("AndroidHost")
                             stopLoading()
                             onPause()
                             resumeTimers()
@@ -1256,6 +1284,7 @@ private fun FullScreenVideoOverlay(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
                         resumeTimers()
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1269,12 +1298,27 @@ private fun FullScreenVideoOverlay(
                             mediaPlaybackRequiresUserGesture = false
                             loadWithOverviewMode = true
                             useWideViewPort = true
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
-                            userAgentString = desktopUserAgent
                         }
                         setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
-                        webViewClient = WebViewClient()
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                val uri = request?.url ?: return false
+                                val host = uri.host ?: ""
+                                if (host.contains("youtube.com") ||
+                                    host.contains("googlevideo.com") ||
+                                    host.contains("ytimg.com") ||
+                                    host.contains("youtube-nocookie.com") ||
+                                    uri.toString() == "about:blank") {
+                                    return false
+                                }
+                                return true
+                            }
+                        }
                         addJavascriptInterface(VideoEndBridge { onClose() }, "AndroidHost")
                         setOnKeyListener { _, keyCode, event ->
                             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
@@ -1284,7 +1328,7 @@ private fun FullScreenVideoOverlay(
                                 false
                             }
                         }
-                        loadDataWithBaseURL("https://elboom.cl", htmlContent, "text/html", "UTF-8", null)
+                        loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
                         webViewInstance = this
                     }
                 },
@@ -1295,8 +1339,8 @@ private fun FullScreenVideoOverlay(
             )
         } else {
             // Reproducción directa MP4 / HLS mediante Media3 ExoPlayer
-            val exoPlayer = remember {
-                ExoPlayer.Builder(context).build().apply {
+            val exoPlayer = remember(videoUrl) {
+                cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context).apply {
                     setMediaItem(MediaItem.fromUri(videoUrl))
                     addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1319,7 +1363,6 @@ private fun FullScreenVideoOverlay(
                         exoPlayer.clearMediaItems()
                         exoPlayer.release()
                     } catch (_: Exception) {}
-                    System.gc()
                 }
             }
 

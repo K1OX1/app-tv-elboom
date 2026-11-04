@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -233,7 +234,8 @@ fun MyStayDialog(
             ) {
                 if (isPlayingVideoOverlay) {
                     val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
-                    val videoUrl = "https://www.youtube.com/watch?v=$youtubeId"
+                    val videoUrl = dynamicCabin?.videoUrl?.takeIf { it.isNotBlank() }
+                        ?: "https://www.youtube.com/watch?v=$youtubeId"
                     FullScreenVideoOverlay(
                         title = dynamicCabin?.name ?: unit.name,
                         videoUrl = videoUrl,
@@ -243,11 +245,16 @@ fun MyStayDialog(
                 // =========================================================================
                 // 1. FONDO CINEMATOGRÁFICO FIJO DE ALTA GAMA (NO CAMBIA A FOTOS DE CAMAS)
                 // =========================================================================
-                Image(
-                    painter = painterResource(id = R.drawable.bg_stay_cinematic),
+                AsyncImage(
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(R.drawable.bg_stay_cinematic)
+                        .size(1280, 720)
+                        .crossfade(false)
+                        .build(),
+                    fallback = painterResource(R.drawable.bg_stay_cinematic),
+                    error = painterResource(R.drawable.bg_stay_cinematic),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    alignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize()
                 )
 
@@ -257,10 +264,10 @@ fun MyStayDialog(
                         .fillMaxSize()
                         .background(
                             Brush.horizontalGradient(
-                                0.00f to Color.Black.copy(alpha = 0.65f),
-                                0.28f to Color.Black.copy(alpha = 0.42f),
-                                0.48f to Color.Black.copy(alpha = 0.15f),
-                                0.65f to Color.Transparent
+                                0.00f to Color(0xFF081822),
+                                0.40f to Color(0xFF081822).copy(alpha = 0.94f),
+                                0.68f to Color(0xFF081822).copy(alpha = 0.65f),
+                                1.00f to Color(0xFF081822).copy(alpha = 0.20f)
                             )
                         )
                 )
@@ -300,7 +307,7 @@ fun MyStayDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 12.dp)
+                        .padding(start = 40.dp, end = 40.dp, top = 24.dp, bottom = 20.dp)
                 ) {
                     // ---------------------------------------------------------------------
                     // BARRA SUPERIOR: TÍTULO, CÁPSULA DE NAVEGACIÓN Y BOTÓN CERRAR
@@ -313,7 +320,7 @@ fun MyStayDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Título y subtítulo superior izquierdo
-                        Column {
+                        Column(modifier = Modifier.weight(1f).padding(end = 20.dp)) {
                             Text(
                                 text = "MI ALOJAMIENTO",
                                 fontSize = 17.sp,
@@ -328,97 +335,11 @@ fun MyStayDialog(
                             Text(
                                 text = if (stay.isOccupied) "Estadía de $guestName · ${stay.nights} noche${if (stay.nights > 1) "s" else ""}$dateSuffix"
                                        else "Información y características de tu estadía",
-                                fontSize = 10.5.sp,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 color = Color(0xFFBAC4D0)
                             )
-                        }
-
-                        // Cápsula de Navegación / Filtros horizontales
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color.Black.copy(alpha = 0.50f))
-                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(50))
-                                .padding(horizontal = 4.dp, vertical = 3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val navTabs = listOf(
-                                "Reserva" to "RESERVA",
-                                "Fotos" to "FOTOS (${realPhotoImages.size.coerceAtLeast(1)})",
-                                "Camas" to "CAMAS",
-                                "Video Tour" to "VIDEO TOUR"
-                            )
-                            navTabs.forEachIndexed { idx, (tabKey, tabLabel) ->
-                                val isSelected = (tabKey == "Reserva" && selectedTab == "Reserva") ||
-                                                 (tabKey == "Fotos" && selectedTab.startsWith("Fotos")) ||
-                                                 (tabKey == "Camas" && selectedTab == "Camas") ||
-                                                 (tabKey == "Video Tour" && selectedTab == "Video Tour")
-                                val interactionSource = remember { MutableInteractionSource() }
-                                val isFocused by interactionSource.collectIsFocusedAsState()
-
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .graphicsLayer {
-                                            val scale = if (isFocused) 1.06f else 1.0f
-                                            scaleX = scale
-                                            scaleY = scale
-                                        }
-                                        .clip(RoundedCornerShape(50))
-                                        .background(
-                                            when {
-                                                isFocused -> Color(0xFF00E5FF)
-                                                isSelected -> Color.White.copy(alpha = 0.16f)
-                                                else -> Color.Transparent
-                                            }
-                                        )
-                                        .border(
-                                            width = when {
-                                                isFocused -> 2.dp
-                                                isSelected -> 1.dp
-                                                else -> 0.dp
-                                            },
-                                            color = when {
-                                                isFocused -> Color.White
-                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.60f)
-                                                else -> Color.Transparent
-                                            },
-                                            shape = RoundedCornerShape(50)
-                                        )
-                                        .clickable(
-                                            interactionSource = interactionSource,
-                                            indication = null
-                                        ) {
-                                            selectedTab = when (tabKey) {
-                                                "Fotos" -> photoTabLabel
-                                                "Camas" -> "Camas"
-                                                "Video Tour" -> "Video Tour"
-                                                else -> "Reserva"
-                                            }
-                                        }
-                                        .focusable(interactionSource = interactionSource)
-                                        .padding(horizontal = 11.dp, vertical = 5.dp)
-                                ) {
-                                    Text(
-                                        text = tabLabel,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = when {
-                                            isFocused -> FontWeight.Black
-                                            isSelected -> FontWeight.Bold
-                                            else -> FontWeight.Medium
-                                        },
-                                        letterSpacing = 0.4.sp,
-                                        color = when {
-                                            isFocused -> Color(0xFF030712)
-                                            isSelected -> Color.White
-                                            else -> Color(0xFFCBD5E1)
-                                        },
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
                         }
 
                         // Botón Cerrar
@@ -466,6 +387,97 @@ fun MyStayDialog(
                         }
                     }
 
+                    Spacer(Modifier.height(12.dp))
+                        // Cápsula de Navegación / Filtros horizontales
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.Black.copy(alpha = 0.50f))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(50))
+                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val navTabs = listOf(
+                                "Reserva" to "RESERVA",
+                                "Fotos" to "FOTOS (${realPhotoImages.size.coerceAtLeast(1)})",
+                                "Camas" to "CAMAS",
+                                "Video Tour" to "VIDEO TOUR"
+                            )
+                            navTabs.forEachIndexed { idx, (tabKey, tabLabel) ->
+                                val isSelected = (tabKey == "Reserva" && selectedTab == "Reserva") ||
+                                                 (tabKey == "Fotos" && selectedTab.startsWith("Fotos")) ||
+                                                 (tabKey == "Camas" && selectedTab == "Camas") ||
+                                                 (tabKey == "Video Tour" && selectedTab == "Video Tour")
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val isFocused by interactionSource.collectIsFocusedAsState()
+
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .then(if (idx == 0) Modifier.focusRequester(initialTabFocusRequester) else Modifier)
+                                        .graphicsLayer {
+                                            val scale = if (isFocused) 1.06f else 1.0f
+                                            scaleX = scale
+                                            scaleY = scale
+                                        }
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            when {
+                                                isFocused -> Color(0xFF00E5FF)
+                                                isSelected -> Color.White.copy(alpha = 0.16f)
+                                                else -> Color.Transparent
+                                            }
+                                        )
+                                        .border(
+                                            width = when {
+                                                isFocused -> 2.dp
+                                                isSelected -> 1.dp
+                                                else -> 0.dp
+                                            },
+                                            color = when {
+                                                isFocused -> Color.White
+                                                isSelected -> Color(0xFF00E5FF).copy(alpha = 0.60f)
+                                                else -> Color.Transparent
+                                            },
+                                            shape = RoundedCornerShape(50)
+                                        )
+                                        .clickable(
+                                            interactionSource = interactionSource,
+                                            indication = null
+                                        ) {
+                                            selectedTab = when (tabKey) {
+                                                "Fotos" -> photoTabLabel
+                                                "Camas" -> "Camas"
+                                                "Video Tour" -> "Video Tour"
+                                                else -> "Reserva"
+                                            }
+                                        }
+                                        .focusable(interactionSource = interactionSource)
+                                        .padding(horizontal = 18.dp, vertical = 9.dp)
+                                ) {
+                                    Text(
+                                        text = tabLabel,
+                                        fontSize = 12.sp,
+                                        fontWeight = when {
+                                            isFocused -> FontWeight.Black
+                                            isSelected -> FontWeight.Bold
+                                            else -> FontWeight.Medium
+                                        },
+                                        letterSpacing = 0.4.sp,
+                                        color = when {
+                                            isFocused -> Color(0xFF030712)
+                                            isSelected -> Color.White
+                                            else -> Color(0xFFCBD5E1)
+                                        },
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+
+                    Spacer(Modifier.height(8.dp))
                     // ---------------------------------------------------------------------
                     // CONTENIDO MEDIO: FICHA INFORMATIVA FLOTANTE O VISTAS SECUNDARIAS
                     // ---------------------------------------------------------------------
@@ -549,7 +561,7 @@ private fun ReservationOverviewLayout(
         // BLOQUE MEDIO-ALTO: FICHA FLOTANTE SOBRE EL PAISAJE (ESTILO GUÍA TURÍSTICA)
         // =========================================================================
         Column(
-            modifier = Modifier.widthIn(max = 580.dp),
+            modifier = Modifier.widthIn(max = 620.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 1. Badges de Categoría y Tinaja en cápsulas refinadas
@@ -694,12 +706,12 @@ private fun ReservationOverviewLayout(
                     modifier = Modifier
                         .focusRequester(initialFocusRequester)
                         .graphicsLayer {
-                            val scale = if (videoFocused) 1.08f else 1.0f
+                            val scale = if (videoFocused) 1.04f else 1.0f
                             scaleX = scale
                             scaleY = scale
                         }
                         .clip(RoundedCornerShape(50))
-                        .background(if (videoFocused) Color(0xFFE50914) else Color(0xCCB91C1C))
+                        .background(if (videoFocused) Color(0xFF287D77) else Color(0xFF195550))
                         .border(
                             width = if (videoFocused) 2.5.dp else 1.dp,
                             color = if (videoFocused) Color.White else Color.White.copy(alpha = 0.40f),
@@ -1291,7 +1303,8 @@ private fun VideoTourPanelView(
     onPlayFullscreen: () -> Unit
 ) {
     val youtubeId = dynamicCabin?.youtubeVideoId?.ifEmpty { "BoOdYfc7Hx8" } ?: "BoOdYfc7Hx8"
-    val youtubeUrl = "https://www.youtube.com/watch?v=$youtubeId"
+    val youtubeUrl = dynamicCabin?.videoUrl?.takeIf { it.isNotBlank() }
+        ?: "https://www.youtube.com/watch?v=$youtubeId"
     val context = LocalContext.current
 
     Row(
@@ -1447,6 +1460,26 @@ private fun FullScreenVideoOverlay(
     val youtubeVideoId = remember(videoUrl) { extractYoutubeVideoId(videoUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var exoPlayerInstance by remember { mutableStateOf<ExoPlayer?>(null) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    exoPlayerInstance?.pause()
+                    webViewInstance?.evaluateJavascript("if (player && player.pauseVideo) player.pauseVideo();", null)
+                    webViewInstance?.onPause()
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    webViewInstance?.onResume()
+                    webViewInstance?.evaluateJavascript("if (player && player.playVideo) player.playVideo();", null)
+                    exoPlayerInstance?.play()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var feedbackAction by remember { mutableStateOf<String?>(null) }
     var feedbackTrigger by remember { mutableLongStateOf(0L) }
 
@@ -1508,7 +1541,6 @@ private fun FullScreenVideoOverlay(
             }
     ) {
         if (youtubeVideoId != null) {
-            val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             val htmlContent = """
                 <!DOCTYPE html>
                 <html>
@@ -1516,43 +1548,49 @@ private fun FullScreenVideoOverlay(
                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
-                        html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
-                        #ytIframe { width: 100%; height: 100%; border: none; }
+                        html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+                        #player { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
                         .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
                         .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
                         .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
                     </style>
                 </head>
                 <body>
-                    <iframe id="ytIframe"
-                        src="https://www.youtube-nocookie.com/embed/$youtubeVideoId?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&fs=0&playsinline=1&vq=hd1080&origin=https://elboom.cl" 
-                        title="Video Tour Cabaña" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen>
-                    </iframe>
+                    <div id="player"></div>
                     <script>
                         var tag = document.createElement('script');
                         tag.src = "https://www.youtube.com/iframe_api";
-                        var first = document.getElementsByTagName('script')[0];
-                        first.parentNode.insertBefore(tag, first);
+                        var firstScriptTag = document.getElementsByTagName('script')[0];
+                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
                         var player;
                         function onYouTubeIframeAPIReady() {
-                            player = new YT.Player('ytIframe', {
+                            player = new YT.Player('player', {
+                                height: '100%',
+                                width: '100%',
+                                videoId: '$youtubeVideoId',
+                                playerVars: {
+                                    'autoplay': 1,
+                                    'controls': 0,
+                                    'rel': 0,
+                                    'showinfo': 0,
+                                    'iv_load_policy': 3,
+                                    'modestbranding': 1,
+                                    'playsinline': 1,
+                                    'fs': 0,
+                                    'disablekb': 1,
+                                    'origin': 'https://www.youtube.com'
+                                },
                                 events: {
                                     'onReady': function(e) {
                                         try {
                                             e.target.unMute();
                                             e.target.setVolume(100);
-                                            if (typeof e.target.setPlaybackQuality === 'function') {
-                                                e.target.setPlaybackQuality('hd1080');
-                                            }
                                             e.target.playVideo();
                                         } catch(err) {}
                                     },
                                     'onStateChange': function(e) {
                                         try {
-                                            // YT.PlayerState.ENDED === 0: Cerrar automáticamente al terminar el video
                                             if (e.data === 0) {
                                                 if (window.AndroidHost && typeof window.AndroidHost.onVideoEnded === 'function') {
                                                     window.AndroidHost.onVideoEnded();
@@ -1563,6 +1601,7 @@ private fun FullScreenVideoOverlay(
                                 }
                             });
                         }
+
                         function seekRelative(sec) {
                             try {
                                 if (player && typeof player.getCurrentTime === 'function') {
@@ -1582,6 +1621,7 @@ private fun FullScreenVideoOverlay(
                 onDispose {
                     try {
                         webViewInstance?.apply {
+                            removeJavascriptInterface("AndroidHost")
                             stopLoading()
                             onPause()
                             resumeTimers()
@@ -1600,6 +1640,7 @@ private fun FullScreenVideoOverlay(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
                         resumeTimers()
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1613,12 +1654,27 @@ private fun FullScreenVideoOverlay(
                             mediaPlaybackRequiresUserGesture = false
                             loadWithOverviewMode = true
                             useWideViewPort = true
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
-                            userAgentString = desktopUserAgent
                         }
                         setBackgroundColor(android.graphics.Color.BLACK)
                         webChromeClient = WebChromeClient()
-                        webViewClient = WebViewClient()
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                val uri = request?.url ?: return false
+                                val host = uri.host ?: ""
+                                if (host.contains("youtube.com") ||
+                                    host.contains("googlevideo.com") ||
+                                    host.contains("ytimg.com") ||
+                                    host.contains("youtube-nocookie.com") ||
+                                    uri.toString() == "about:blank") {
+                                    return false
+                                }
+                                return true
+                            }
+                        }
                         addJavascriptInterface(VideoEndBridgeStay { onClose() }, "AndroidHost")
                         setOnKeyListener { _, keyCode, event ->
                             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
@@ -1628,7 +1684,7 @@ private fun FullScreenVideoOverlay(
                                 false
                             }
                         }
-                        loadDataWithBaseURL("https://elboom.cl", htmlContent, "text/html", "UTF-8", null)
+                        loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
                         webViewInstance = this
                     }
                 },
@@ -1638,8 +1694,8 @@ private fun FullScreenVideoOverlay(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            val exoPlayer = remember {
-                ExoPlayer.Builder(context).build().apply {
+            val exoPlayer = remember(videoUrl) {
+                cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context).apply {
                     setMediaItem(MediaItem.fromUri(videoUrl))
                     addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1662,7 +1718,6 @@ private fun FullScreenVideoOverlay(
                         exoPlayer.clearMediaItems()
                         exoPlayer.release()
                     } catch (_: Exception) {}
-                    System.gc()
                 }
             }
 

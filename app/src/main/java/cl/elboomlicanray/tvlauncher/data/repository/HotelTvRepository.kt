@@ -655,6 +655,7 @@ class HotelTvRepository @Inject constructor(
                     view = obj.optString("view", "Bosque Nativo y Jardines"),
                     description = obj.optString("description", ""),
                     youtubeVideoId = obj.optString("youtubeVideoId", ""),
+                    videoUrl = obj.optString("videoUrl", "").takeIf { it.startsWith("https://") || it.startsWith("http://") }.orEmpty(),
                     images = imagesList,
                     amenities = amenitiesList,
                     tinajaDetails = obj.optString("tinajaDetails", ""),

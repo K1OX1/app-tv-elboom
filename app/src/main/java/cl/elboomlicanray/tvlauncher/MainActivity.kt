@@ -104,7 +104,6 @@ class MainActivity : ComponentActivity() {
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             try {
                 Coil.imageLoader(this).memoryCache?.clear()
-                System.gc()
             } catch (_: Exception) {}
         }
     }
