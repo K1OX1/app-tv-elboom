@@ -1,7 +1,5 @@
 package cl.elboomlicanray.tvlauncher.presentation.modals.stay
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -20,11 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.elboomlicanray.tvlauncher.presentation.home.ActivityDialog as Dialog
@@ -43,9 +38,9 @@ import java.util.Locale
 /**
  * Diálogo Modal: Pagar Saldo en el Sitio Web (elboom.cl).
  *
- * Muestra el enlace personal oficial `https://elboom.cl/mi-reserva?id=...`
- * junto a un código QR de alta resolución escaneable desde el móvil y
- * la opción de abrirlo directamente en el navegador del televisor.
+ * Muestra el enlace oficial y el código QR de alta resolución para que el huésped
+ * escanee con su teléfono móvil y pague o revise su reserva directamente en la web.
+ * No abre navegadores externos ni pestañas en el televisor.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -55,8 +50,7 @@ fun PaymentDialog(
     paymentUrl: String,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    val openBrowserFocusRequester = remember { FocusRequester() }
+    val closeFocusRequester = remember { FocusRequester() }
     var isVisible by remember { mutableStateOf(false) }
 
     val clpFormatter = remember { NumberFormat.getIntegerInstance(Locale("es", "CL")) }
@@ -65,7 +59,7 @@ fun PaymentDialog(
     LaunchedEffect(Unit) {
         isVisible = true
         try {
-            openBrowserFocusRequester.requestFocus()
+            closeFocusRequester.requestFocus()
         } catch (_: Exception) {}
     }
 
@@ -131,7 +125,7 @@ fun PaymentDialog(
                                 )
                             }
 
-                            // Botón cerrar
+                            // Botón cerrar superior
                             Button(
                                 onClick = onDismiss,
                                 shape = ButtonDefaults.shape(shape = RoundedCornerShape(8.dp)),
@@ -184,12 +178,12 @@ fun PaymentDialog(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Escanea el código QR con tu teléfono para pagar mediante WebPay, débito o crédito:",
+                                    text = "Escanea el código QR con tu celular para pagar en línea de forma segura con WebPay, débito o crédito:",
                                     color = TvTokens.TextMuted,
-                                    fontSize = 11.sp,
-                                    lineHeight = 15.sp
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 16.sp
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = paymentUrl,
                                     color = TvTokens.CyanNeon,
@@ -203,7 +197,7 @@ fun PaymentDialog(
                             // Código QR
                             Box(
                                 modifier = Modifier
-                                    .size(130.dp)
+                                    .size(140.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Color.White)
                                     .padding(8.dp),
@@ -216,37 +210,33 @@ fun PaymentDialog(
                             }
                         }
 
-                        // Botón de acción: Abrir en navegador
+                        // Botón de acción: Volver a la pantalla principal
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(paymentUrl))
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                },
+                                onClick = onDismiss,
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .focusRequester(openBrowserFocusRequester),
+                                    .fillMaxWidth()
+                                    .focusRequester(closeFocusRequester),
                                 shape = ButtonDefaults.shape(shape = RoundedCornerShape(10.dp)),
                                 colors = ButtonDefaults.colors(
-                                    containerColor = TvTokens.CyanNeon.copy(alpha = 0.25f),
-                                    contentColor = TvTokens.CyanNeon,
+                                    containerColor = Color.White.copy(alpha = 0.12f),
+                                    contentColor = Color.White,
                                     focusedContainerColor = TvTokens.CyanNeon,
                                     focusedContentColor = Color.Black
                                 ),
-                                contentPadding = PaddingValues(vertical = 10.dp)
+                                contentPadding = PaddingValues(vertical = 11.dp)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TvIcon(name = "external", size = 15.dp, color = Color.Unspecified)
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
                                     Text(
-                                        text = "Abrir enlace en la TV",
-                                        fontSize = 12.5.sp,
+                                        text = "← Volver al inicio",
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }

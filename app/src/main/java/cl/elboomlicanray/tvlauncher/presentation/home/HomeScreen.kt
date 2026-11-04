@@ -293,10 +293,6 @@ fun HomeScreen(
                             .fillMaxHeight(),
                         onPayBalance = {
                             activeModal = "payment"
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(paymentUrl))
-                                context.startActivity(intent)
-                            } catch (_: Exception) {}
                         },
                         onDismissCleaningOrWelcomeGuest = {
                             viewModel.activateGuestModeOrMarkClean()
