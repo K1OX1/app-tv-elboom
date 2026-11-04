@@ -194,23 +194,12 @@ fun LauncherTopHeader(
             val isAuthError = connectionState == TvConnectionState.AUTH_ERROR
             val isOffline = connectionState == TvConnectionState.NO_INTERNET
 
-            val infiniteTransition = rememberInfiniteTransition(label = "pulse_trans")
-            val pulseAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.45f,
-                targetValue = 1.0f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1200, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "dot_pulse_alpha"
-            )
-
-            val statusDotColor = when {
+            val statusDotColor by androidx.compose.animation.animateColorAsState(targetValue = when {
                 isConnected -> Color(0xFF10B981) // Verde esmeralda vivo
                 isAuthError -> Color(0xFFEF4444) // Rojo advertencia
                 isOffline -> Color(0xFFEF4444)   // Rojo sin internet
                 else -> Color(0xFF94A3B8)
-            }
+            }, animationSpec = tween(150), label = "connection")
 
             val statusText = if (isConnected) "Conexión a elboom.cl" else "Conexión al servidor"
 
@@ -236,7 +225,7 @@ fun LauncherTopHeader(
                         .size(8.dp)
                         .clip(CircleShape)
                         .graphicsLayer {
-                            alpha = if (isConnected) pulseAlpha else 1.0f
+                            alpha = 1f
                         }
                         .background(statusDotColor)
                 )

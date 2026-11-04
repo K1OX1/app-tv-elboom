@@ -146,6 +146,30 @@ class HotelTvRepository @Inject constructor(
         }
     }
 
+    suspend fun markCleaningReady(unitId: Int, taskToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (taskToken.isBlank() || preferencesHelper.getConfiguredUnit().id != unitId) return@withContext false
+        val url = URL(preferencesHelper.getApiBaseUrl().trimEnd('/') + "/cleaning/ready")
+        val connection = url.openConnection() as HttpURLConnection
+        try {
+            val token = preferencesHelper.getUnitToken()
+            connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 6000
+            connection.readTimeout = 6000
+            connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("x-tv-token", token)
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.bufferedWriter().use {
+                it.write(JSONObject().put("unitId", unitId).put("taskToken", taskToken).toString())
+            }
+            connection.responseCode in 200..299 &&
+                connection.inputStream.bufferedReader().use { JSONObject(it.readText()).optBoolean("success") }
+        } catch (_: java.io.IOException) { false }
+          catch (_: org.json.JSONException) { false }
+        finally { connection.disconnect() }
+    }
+
     private fun parseHotelTvJson(json: JSONObject, unit: AccommodationUnit): GuestStayInfo {
         val screenStr = json.optString("screen", "")
         val isOccupied = if (screenStr.isNotBlank()) {
@@ -166,11 +190,26 @@ class HotelTvRepository @Inject constructor(
         val hostWhatsappFormatted = servicesObj?.optString("hostWhatsappFormatted", "+56 9 7269 4597") ?: "+56 9 7269 4597"
 
         val cleaningObj = json.optJSONObject("cleaning")
-        val isDirty = cleaningObj?.optBoolean("isDirty", false) ?: false
-        val cleaningStatus = cleaningObj?.optString("status", if (isDirty) "SUCIA" else "LIMPIA") ?: if (isDirty) "SUCIA" else "LIMPIA"
+        val reportedStatus = cleaningObj?.optString("status")?.trim().orEmpty()
+        val dirtyFlag = cleaningObj?.optString("isDirty")?.toBooleanStrictOrNull()
+        val isDirty = screenStr.equals("CLEANING", true) || dirtyFlag == true ||
+            reportedStatus.equals("SUCIA", true)
+        val cleaningStatus = if (isDirty) "SUCIA" else reportedStatus.ifBlank {
+            if (dirtyFlag == false || screenStr.equals("PREPARED", true)) "LIMPIA" else "SIN CONFIRMAR"
+        }
         val cleaningSheets = cleaningObj?.optInt("sheetsCount", 0) ?: 0
         val cleaningNotes = cleaningObj?.optString("notes", "") ?: ""
         val cleaningInfo = CleaningInfo(
+            sheetTotal = cleaningObj?.optInt("sheetsCount", -1)?.takeIf { it >= 0 },
+            sheetDetails = cleaningObj?.optJSONArray("sheetsByType")?.let { rows ->
+                (0 until rows.length()).mapNotNull { i ->
+                    val row = rows.optJSONObject(i) ?: return@mapNotNull null
+                    val type = row.optString("type").trim()
+                    val count = row.optInt("count", -1)
+                    if (type.isNotBlank() && count >= 0) "$count × $type" else null
+                }.joinToString(" · ")
+            }.orEmpty(),
+            readyToken = cleaningObj?.optString("taskToken").orEmpty(),
             isDirty = isDirty,
             status = cleaningStatus,
             sheetsCount = cleaningSheets,
@@ -184,6 +223,12 @@ class HotelTvRepository @Inject constructor(
             val ngChildren = ngGuests?.optInt("children", 0) ?: 0
             val ngTotal = ngGuests?.optInt("total", ngAdults + ngChildren) ?: (ngAdults + ngChildren)
             NextGuestInfo(
+                peopleLabel = listOfNotNull(
+                    ngGuests?.optInt("adults", -1)?.takeIf { it >= 0 }?.let { "$it adultos" },
+                    ngGuests?.optInt("children", -1)?.takeIf { it >= 0 }?.let { "$it niños" }
+                ).joinToString(" · "),
+                phone = nextGuestObj.optString("phone").takeUnless { it == "null" }.orEmpty(),
+                pets = nextGuestObj.optString("hasPets").toBooleanStrictOrNull(),
                 fullName = nextGuestObj.optString("fullName", ""),
                 checkinTime = nextGuestObj.optString("checkinTime", "15:00 hrs"),
                 adultsCount = ngAdults,
@@ -199,12 +244,9 @@ class HotelTvRepository @Inject constructor(
         } else false
         val isLocallyClean = preferencesHelper.isUnitForceClean(unit.id)
 
-        // El alojamiento se considera listo/limpio si el backend reporta LIMPIA, !isDirty, PREPARED, o si localmente se confirmó
-        val isAlojamientoLimpio = !isDirty ||
-                cleaningStatus.equals("LIMPIA", ignoreCase = true) ||
-                screenStr.equals("PREPARED", ignoreCase = true) ||
-                isLocallyClean ||
-                isLocallyCheckedIn
+        val isAlojamientoLimpio = !isDirty && (dirtyFlag == false ||
+            cleaningStatus.equals("LIMPIA", true) || screenStr.equals("PREPARED", true) ||
+            isLocallyClean || isLocallyCheckedIn)
 
         // Si hay un próximo huésped asignado para hoy y el alojamiento está limpio o el huésped ya está en cabaña:
         // ¡Mostrar directamente la pantalla de Bienvenida del Huésped, jamás la ficha de aseo!
@@ -252,8 +294,8 @@ class HotelTvRepository @Inject constructor(
             )
         }
 
-        val isCleaning = (screenStr.equals("CLEANING", ignoreCase = true) || (isDirty && !isOccupied)) && !isAlojamientoLimpio
-        val isPrepared = screenStr.equals("PREPARED", ignoreCase = true) && !isAlojamientoLimpio
+        val isCleaning = !isOccupied && isDirty
+        val isPrepared = screenStr.equals("PREPARED", ignoreCase = true) && !isDirty
 
         if (isCleaning) {
             return GuestStayInfo(
@@ -536,7 +578,7 @@ class HotelTvRepository @Inject constructor(
     // =============================================================================================
     suspend fun fetchDynamicAccommodations(): Result<List<DynamicCabinDetails>> = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
-        val cachedJson = preferencesHelper.getCachedAccommodationsJson()
+        val cachedData = preferencesHelper.getCachedAccommodationsJson()?.let { runCatching { parseAccommodationsJson(it) }.getOrNull() }?.takeIf { it.isNotEmpty() }
         val cachedEtag = preferencesHelper.getHttpHeader("etag_accommodations")
         val cachedLastMod = preferencesHelper.getHttpHeader("lastmod_accommodations")
 
@@ -547,28 +589,24 @@ class HotelTvRepository @Inject constructor(
                 readTimeout = 5000
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
-                if (!cachedEtag.isNullOrBlank()) setRequestProperty("If-None-Match", cachedEtag)
-                if (!cachedLastMod.isNullOrBlank()) setRequestProperty("If-Modified-Since", cachedLastMod)
+                if (cachedData != null && !cachedEtag.isNullOrBlank()) setRequestProperty("If-None-Match", cachedEtag)
+                if (cachedData != null && !cachedLastMod.isNullOrBlank()) setRequestProperty("If-Modified-Since", cachedLastMod)
                 useCaches = false
             }
 
             val responseCode = connection.responseCode
             if (responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
                 Log.d(TAG, "Accommodations HTTP 304 (Not Modified): Reutilizando caché de disco sin transferencia de red.")
-                if (cachedJson != null) {
-                    val cabins = parseAccommodationsJson(cachedJson)
-                    if (cabins.isNotEmpty()) return@withContext Result.success(cabins)
-                }
+                cachedData?.let { return@withContext Result.success(it) }
             } else if (responseCode == 200) {
                 val etag = connection.getHeaderField("ETag")
                 val lastMod = connection.getHeaderField("Last-Modified")
-                if (etag != null) preferencesHelper.setHttpHeader("etag_accommodations", etag)
-                if (lastMod != null) preferencesHelper.setHttpHeader("lastmod_accommodations", lastMod)
-
                 val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                preferencesHelper.setCachedAccommodationsJson(responseText)
                 val cabins = parseAccommodationsJson(responseText)
                 if (cabins.isNotEmpty()) {
+                    val cacheWritten = preferencesHelper.setCachedAccommodationsJson(responseText)
+                    preferencesHelper.setHttpHeader("etag_accommodations", if (cacheWritten) etag else null)
+                    preferencesHelper.setHttpHeader("lastmod_accommodations", if (cacheWritten) lastMod else null)
                     return@withContext Result.success(cabins)
                 }
             }
@@ -579,14 +617,7 @@ class HotelTvRepository @Inject constructor(
         }
 
         // Fallback a Cache Offline
-        cachedJson?.let { json ->
-            try {
-                val cabins = parseAccommodationsJson(json)
-                if (cabins.isNotEmpty()) {
-                    return@withContext Result.success(cabins)
-                }
-            } catch (_: Exception) {}
-        }
+        cachedData?.let { return@withContext Result.success(it) }
 
         Result.failure(Exception("No se pudieron cargar cabañas dinámicas"))
     }
@@ -685,7 +716,7 @@ class HotelTvRepository @Inject constructor(
     // =============================================================================================
     suspend fun fetchDynamicTouristGuide(): Result<List<DynamicTouristAttraction>> = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
-        val cachedJson = preferencesHelper.getCachedTouristGuideJson()
+        val cachedData = preferencesHelper.getCachedTouristGuideJson()?.let { runCatching { parseTouristGuideJson(it) }.getOrNull() }?.takeIf { it.isNotEmpty() }
         val cachedEtag = preferencesHelper.getHttpHeader("etag_tourist_guide")
         val cachedLastMod = preferencesHelper.getHttpHeader("lastmod_tourist_guide")
 
@@ -696,28 +727,24 @@ class HotelTvRepository @Inject constructor(
                 readTimeout = 5000
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
-                if (!cachedEtag.isNullOrBlank()) setRequestProperty("If-None-Match", cachedEtag)
-                if (!cachedLastMod.isNullOrBlank()) setRequestProperty("If-Modified-Since", cachedLastMod)
+                if (cachedData != null && !cachedEtag.isNullOrBlank()) setRequestProperty("If-None-Match", cachedEtag)
+                if (cachedData != null && !cachedLastMod.isNullOrBlank()) setRequestProperty("If-Modified-Since", cachedLastMod)
                 useCaches = false
             }
 
             val responseCode = connection.responseCode
             if (responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
                 Log.d(TAG, "TouristGuide HTTP 304 (Not Modified): Reutilizando atractivos desde caché de disco.")
-                if (cachedJson != null) {
-                    val items = parseTouristGuideJson(cachedJson)
-                    if (items.isNotEmpty()) return@withContext Result.success(items)
-                }
+                cachedData?.let { return@withContext Result.success(it) }
             } else if (responseCode == 200) {
                 val etag = connection.getHeaderField("ETag")
                 val lastMod = connection.getHeaderField("Last-Modified")
-                if (etag != null) preferencesHelper.setHttpHeader("etag_tourist_guide", etag)
-                if (lastMod != null) preferencesHelper.setHttpHeader("lastmod_tourist_guide", lastMod)
-
                 val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                preferencesHelper.setCachedTouristGuideJson(responseText)
                 val items = parseTouristGuideJson(responseText)
                 if (items.isNotEmpty()) {
+                    val cacheWritten = preferencesHelper.setCachedTouristGuideJson(responseText)
+                    preferencesHelper.setHttpHeader("etag_tourist_guide", if (cacheWritten) etag else null)
+                    preferencesHelper.setHttpHeader("lastmod_tourist_guide", if (cacheWritten) lastMod else null)
                     return@withContext Result.success(items)
                 }
             }
@@ -727,14 +754,7 @@ class HotelTvRepository @Inject constructor(
             connection?.disconnect()
         }
 
-        cachedJson?.let { json ->
-            try {
-                val items = parseTouristGuideJson(json)
-                if (items.isNotEmpty()) {
-                    return@withContext Result.success(items)
-                }
-            } catch (_: Exception) {}
-        }
+        cachedData?.let { return@withContext Result.success(it) }
 
         Result.success(cl.elboomlicanray.tvlauncher.domain.model.DEFAULT_OFFICIAL_ATTRACTIONS)
     }
@@ -847,7 +867,7 @@ class HotelTvRepository @Inject constructor(
     // =============================================================================================
     suspend fun fetchDynamicProperty(): Result<DynamicPropertyInfo> = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
-        val cachedJson = preferencesHelper.getCachedPropertyJson()
+        val cachedData = preferencesHelper.getCachedPropertyJson()?.let { runCatching { parsePropertyJson(it) }.getOrNull() }
         val cachedEtag = preferencesHelper.getHttpHeader("etag_property")
         val cachedLastMod = preferencesHelper.getHttpHeader("lastmod_property")
 
@@ -858,26 +878,25 @@ class HotelTvRepository @Inject constructor(
                 readTimeout = 5000
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
-                if (!cachedEtag.isNullOrBlank()) setRequestProperty("If-None-Match", cachedEtag)
-                if (!cachedLastMod.isNullOrBlank()) setRequestProperty("If-Modified-Since", cachedLastMod)
+                if (cachedData != null && !cachedEtag.isNullOrBlank()) setRequestProperty("If-None-Match", cachedEtag)
+                if (cachedData != null && !cachedLastMod.isNullOrBlank()) setRequestProperty("If-Modified-Since", cachedLastMod)
                 useCaches = false
             }
 
             val responseCode = connection.responseCode
             if (responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
                 Log.d(TAG, "Property HTTP 304 (Not Modified): Reutilizando normas y horarios desde caché de disco.")
-                if (cachedJson != null) {
-                    return@withContext Result.success(parsePropertyJson(cachedJson))
-                }
+                cachedData?.let { return@withContext Result.success(it) }
             } else if (responseCode == 200) {
                 val etag = connection.getHeaderField("ETag")
                 val lastMod = connection.getHeaderField("Last-Modified")
-                if (etag != null) preferencesHelper.setHttpHeader("etag_property", etag)
-                if (lastMod != null) preferencesHelper.setHttpHeader("lastmod_property", lastMod)
-
                 val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-                preferencesHelper.setCachedPropertyJson(responseText)
-                return@withContext Result.success(parsePropertyJson(responseText))
+                require(JSONObject(responseText).optJSONObject("property") != null) { "Respuesta property inválida" }
+                val property = parsePropertyJson(responseText)
+                val cacheWritten = preferencesHelper.setCachedPropertyJson(responseText)
+                preferencesHelper.setHttpHeader("etag_property", if (cacheWritten) etag else null)
+                preferencesHelper.setHttpHeader("lastmod_property", if (cacheWritten) lastMod else null)
+                return@withContext Result.success(property)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Fallo al consultar property en vivo, revisando cache: ${e.message}")
@@ -885,18 +904,14 @@ class HotelTvRepository @Inject constructor(
             connection?.disconnect()
         }
 
-        cachedJson?.let { json ->
-            try {
-                return@withContext Result.success(parsePropertyJson(json))
-            } catch (_: Exception) {}
-        }
+        cachedData?.let { return@withContext Result.success(it) }
 
         Result.success(DynamicPropertyInfo())
     }
 
     private fun parsePropertyJson(jsonString: String): DynamicPropertyInfo {
         val root = JSONObject(jsonString)
-        val prop = root.optJSONObject("property") ?: return DynamicPropertyInfo()
+        val prop = root.getJSONObject("property")
 
         val schedules = prop.optJSONObject("schedules")
         val checkIn = schedules?.optString("checkIn", "15:00 a 22:00 hrs") ?: "15:00 a 22:00 hrs"

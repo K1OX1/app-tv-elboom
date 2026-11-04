@@ -12,6 +12,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.tv.material3.Button
+import cl.elboomlicanray.tvlauncher.presentation.home.ActivityDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -52,41 +59,7 @@ import java.util.Locale
 /**
  * Desglosa la descripción de camas en la cantidad y tipos de sábanas requeridas para el personal de preparación.
  */
-private fun getBedsheetBreakdown(bedsDesc: String): List<String> {
-    if (bedsDesc.isBlank()) return listOf("• Sábanas según capacidad del alojamiento")
 
-    val items = bedsDesc.split(Regex("[|+]+"))
-        .map { it.replace(Regex("[🛏️*]"), "").trim() }
-        .filter { it.isNotBlank() && !it.equals("Camas equipadas", ignoreCase = true) }
-
-    if (items.isEmpty()) return listOf("• Sábanas según distribución del alojamiento")
-
-    val result = mutableListOf<String>()
-    for (item in items) {
-        val lower = item.lowercase()
-        val text = when {
-            lower.contains("king") -> "• 1 juego King (2.0 x 2.0 m)"
-            lower.contains("queen") -> "• 1 juego Queen (1.6 x 2.0 m)"
-            lower.contains("2 camas de 2 plazas") || lower.contains("2 camas matrimoniales") -> "• 2 juegos de 2 Plazas (Matrimonial)"
-            lower.contains("3 camas matrimoniales") -> "• 3 juegos de 2 Plazas (Matrimonial)"
-            lower.contains("1 cama 2 plazas") || lower.contains("1 cama matrimonial") -> "• 1 juego de 2 Plazas (Matrimonial)"
-            lower.contains("2 literas") || lower.contains("2 literas de 1½ plazas") || lower.contains("2 literas de 1.5") -> "• 4 juegos de 1½ Plazas (Literas)"
-            lower.contains("1 litera") -> "• 2 juegos de 1½ Plazas (Litera)"
-            lower.contains("4 camas 1.5") -> "• 4 juegos de 1½ Plazas"
-            lower.contains("3 camas 1.5") -> "• 3 juegos de 1½ Plazas"
-            lower.contains("2 camas 1.5") -> "• 2 juegos de 1½ Plazas"
-            lower.contains("1 cama 1.5") -> "• 1 juego de 1½ Plazas"
-            lower.contains("2 camas nido") -> "• 2 juegos de 1 Plaza (Nido)"
-            lower.contains("1 cama nido") -> "• 1 juego de 1 Plaza (Nido)"
-            lower.contains("sofá cama") || lower.contains("sofa cama") -> "• 1 juego para Sofá Cama"
-            else -> "• $item"
-        }
-        if (!result.contains(text)) {
-            result.add(text)
-        }
-    }
-    return if (result.isNotEmpty()) result else listOf("• Sábanas según distribución del alojamiento")
-}
 
 @Composable
 fun WelcomeHeroPanel(
@@ -122,9 +95,9 @@ fun WelcomeHeroPanel(
         val timeClean = if (officialTime.endsWith("hrs", ignoreCase = true)) officialTime else "$officialTime hrs"
         if (guestStay.isOccupied && guestStay.checkinDate.isNotBlank()) {
             if (guestStay.checkinDate.equals("hoy", ignoreCase = true)) {
-                "Hoy · A partir de las $timeClean"
+                "Hoy · $timeClean"
             } else {
-                "${guestStay.checkinDate} · Desde las $timeClean"
+                "${guestStay.checkinDate} · $timeClean"
             }
         } else {
             "Oficial · Desde las 15:00 hrs"
@@ -135,9 +108,9 @@ fun WelcomeHeroPanel(
         val officialTime = guestStay.checkoutOfficialTime.ifBlank { "11:00 hrs" }
         val timeClean = if (officialTime.endsWith("hrs", ignoreCase = true)) officialTime else "$officialTime hrs"
         if (guestStay.isOccupied && guestStay.checkoutDate.isNotBlank() && !guestStay.checkoutDate.contains("Salida", ignoreCase = true)) {
-            "${guestStay.checkoutDate} · Hasta las $timeClean"
+            "${guestStay.checkoutDate} · $timeClean"
         } else {
-            "Entrega oficial hasta las $timeClean"
+            "$timeClean"
         }
     }
 
@@ -272,13 +245,13 @@ fun WelcomeHeroPanel(
             // TÍTULO Y ALOJAMIENTO
             Column {
                 Text(
-                    text = headerPrefix,
+                    text = if (isCleaning) unitName else headerPrefix,
                     color = headerPrefixColor,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = headerMainTitle,
+                    text = if (isCleaning) "Preparación de alojamiento" else headerMainTitle,
                     color = Color.White,
                     fontSize = if (headerMainTitle.length > 20) 24.sp else 30.sp,
                     fontWeight = FontWeight.Black,
@@ -291,7 +264,7 @@ fun WelcomeHeroPanel(
                 Spacer(modifier = Modifier.height(5.dp))
 
                 // Fila Tu Alojamiento
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!isCleaning) Row(verticalAlignment = Alignment.CenterVertically) {
                     TvIcon(
                         name = "home",
                         size = 17.dp,
@@ -315,8 +288,8 @@ fun WelcomeHeroPanel(
                 }
             }
 
-            // ESTADO DE RESERVA ESTILO VIDRIO ESMERILADO
-            Row(
+            // Estado de reserva
+            if (!isCleaning) Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
@@ -349,76 +322,16 @@ fun WelcomeHeroPanel(
             }
 
             if (isCleaning) {
-                // FICHA DE PREPARACIÓN DE ALOJAMIENTO (SÁBANAS DETALLADAS Y TOALLAS)
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    val bedsSummary = guestStay.selectedBedsSummary.ifBlank { unitName }
-                    val sheetItems = remember(bedsSummary) { getBedsheetBreakdown(bedsSummary) }
-
-                    Text(
-                        text = "🛏️ Sábanas requeridas para camas:",
-                        color = Color(0xFFFDE047),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    sheetItems.forEach { sheetItem ->
-                        Text(
-                            text = sheetItem,
-                            color = Color.White,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(1.dp))
-
-                    val ngTotal = guestStay.nextGuestInfo?.totalGuests ?: guestStay.cleaningInfo.sheetsCount
-                    val ngAdults = guestStay.nextGuestInfo?.adultsCount ?: 2
-                    val ngChildren = guestStay.nextGuestInfo?.childrenCount ?: 0
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "🛁 Toallas de baño:", color = Color(0xFFFDE047), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            text = "$ngTotal toallas ($ngAdults Ad${if (ngChildren > 0) " · $ngChildren Niñ" else ""})",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    if (!guestStay.nextGuestInfo?.specialRequests.isNullOrBlank()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "⚠️ Petición especial:", color = Color(0xFFF59E0B), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = guestStay.nextGuestInfo?.specialRequests ?: "",
-                                color = Color(0xFFFDE047),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "🕒 Próximo ingreso:", color = TvTokens.TextSlate, fontSize = 11.sp)
-                            Text(
-                                text = "15:00 hrs · ${guestStay.nextGuestInfo?.fullName ?: ""}",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                val clean = guestStay.cleaningInfo
+                val arrival = guestStay.nextGuestInfo
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val sheets = clean.sheetDetails.ifBlank { clean.sheetTotal?.toString() ?: "Sin informar" }
+                    Text("Sábanas · $sheets", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    arrival?.let {
+                        Text(it.fullName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                        listOf(it.peopleLabel, it.pets?.let { has -> if (has) "Con mascota" else "Sin mascota" }.orEmpty(),
+                            it.phone).filter { value -> value.isNotBlank() }.forEach { value ->
+                            Text(value, color = Color.White, fontSize = 12.sp)
                         }
                     }
                 }
@@ -437,7 +350,7 @@ fun WelcomeHeroPanel(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TvIcon(name = "calendar", size = 13.dp, color = TvTokens.CyanNeon)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "Check-in (Ingreso)", color = TvTokens.TextSlate, fontSize = 11.sp)
+                            Text(text = "Llegada", color = TvTokens.TextSlate, fontSize = 11.sp)
                         }
                         Text(text = checkinText, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
@@ -451,7 +364,7 @@ fun WelcomeHeroPanel(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TvIcon(name = "calendar", size = 13.dp, color = TvTokens.TextSlate)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "Check-out (Salida)", color = TvTokens.TextSlate, fontSize = 11.sp)
+                            Text(text = "Salida", color = TvTokens.TextSlate, fontSize = 11.sp)
                         }
                         Text(text = checkoutText, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
@@ -500,7 +413,7 @@ fun WelcomeHeroPanel(
             }
 
             // BOTÓN DE ACCIÓN RÁPIDA (PAGAR SALDO O ACTIVAR BIENVENIDA DE HUÉSPED)
-            if (isCleaning) {
+            if (isCleaning && guestStay.cleaningInfo.readyToken.isNotBlank()) {
                 val cleanActionInteractionSource = remember { MutableInteractionSource() }
                 val isCleanActionFocused by cleanActionInteractionSource.collectIsFocusedAsState()
 
@@ -510,15 +423,36 @@ fun WelcomeHeroPanel(
                     label = "clean_scale"
                 )
 
-                val guestTargetName = guestStay.nextGuestInfo?.fullName?.trim()?.split(Regex("\\s+"))?.let { parts ->
-                    if (parts.size >= 2) "${parts[0]} ${parts[1]}" else parts.firstOrNull() ?: ""
-                } ?: ""
-                val buttonLabel = if (guestTargetName.isNotBlank()) {
-                    "✨ Huésped en alojamiento · Iniciar Bienvenida ($guestTargetName)"
-                } else {
-                    "✓ Marcar Preparación Lista · Alojamiento Listo"
+                var confirming by remember(unitName, guestStay.cleaningInfo.readyToken) { mutableStateOf(false) }
+                if (confirming) {
+                    ActivityDialog(onDismissRequest = { confirming = false }) {
+                        val cancelFocus = remember { FocusRequester() }
+                        Column(
+                            modifier = Modifier.widthIn(max = 460.dp)
+                                .background(Color(0xFF101D29), RoundedCornerShape(16.dp))
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Text("¿Marcar $unitName como lista?", color = Color.White,
+                                fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text("Confirma solo si el aseo terminó y la cabaña ya puede recibir al huésped. Al confirmar, el sitio puede avisarle de inmediato que ya puede ingresar.",
+                                color = Color(0xFFE2E8F0), fontSize = 15.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Button(onClick = { confirming = false }, modifier = Modifier.focusRequester(cancelFocus)) {
+                                    Text("Cancelar")
+                                }
+                                Button(onClick = {
+                                    if (confirming) {
+                                        confirming = false
+                                        onDismissCleaningOrWelcomeGuest()
+                                    }
+                                }) { Text("Sí, marcar lista") }
+                            }
+                        }
+                        LaunchedEffect(Unit) { cancelFocus.requestFocus() }
+                    }
                 }
-
+                val buttonLabel = "Marcar alojamiento listo"
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
@@ -537,17 +471,10 @@ fun WelcomeHeroPanel(
                                 color = if (isCleanActionFocused) Color(0xFF4ADE80) else Color(0xFF10B981).copy(alpha = 0.70f),
                                 shape = RoundedCornerShape(10.dp)
                             )
-                            .focusable(interactionSource = cleanActionInteractionSource)
-                            .onKeyEvent { keyEvent ->
-                                if (keyEvent.type == KeyEventType.KeyUp && (keyEvent.key == Key.DirectionCenter || keyEvent.key == Key.Enter)) {
-                                    onDismissCleaningOrWelcomeGuest()
-                                    true
-                                } else false
-                            }
                             .clickable(
                                 interactionSource = cleanActionInteractionSource,
                                 indication = null,
-                                onClick = onDismissCleaningOrWelcomeGuest
+                                onClick = { confirming = true }
                             )
                             .padding(horizontal = 12.dp, vertical = 7.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -574,15 +501,9 @@ fun WelcomeHeroPanel(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = "Presiona OK en el control si ya estás en tu alojamiento",
-                        color = TvTokens.TextMuted,
-                        fontSize = 9.sp,
-                        modifier = Modifier.padding(start = 6.dp)
-                    )
+
                 }
-            } else if (hasPendingBalance && !isPrepared) {
+            } else if (hasPendingBalance && !isPrepared && !isCleaning) {
                 val payInteractionSource = remember { MutableInteractionSource() }
                 val isPayFocused by payInteractionSource.collectIsFocusedAsState()
 

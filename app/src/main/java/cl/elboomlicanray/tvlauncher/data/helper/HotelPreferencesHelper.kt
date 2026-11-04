@@ -265,7 +265,7 @@ class HotelPreferencesHelper @Inject constructor(
     // OPTIMIZACIÓN DE MEMORIA RAM: ARCHIVOS PLANOS EN DISCO (CACHE DIR)
     // =========================================================================
 
-    private fun writeCacheFile(filename: String, content: String) {
+    private fun writeCacheFile(filename: String, content: String): Boolean {
         try {
             val targetFile = File(context.cacheDir, filename)
             val tempFile = File(context.cacheDir, "$filename.tmp")
@@ -275,8 +275,10 @@ class HotelPreferencesHelper @Inject constructor(
                 targetFile.writeText(content, Charsets.UTF_8)
                 tempFile.delete()
             }
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Error escribiendo cache en disco para $filename", e)
+            return false
         }
     }
 

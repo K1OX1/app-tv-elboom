@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 object MainActivityEvents {
+    var videoOpen = false
+
     private val _adminDialogRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val adminDialogRequests = _adminDialogRequests.asSharedFlow()
 

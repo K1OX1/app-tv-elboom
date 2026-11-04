@@ -55,9 +55,9 @@ fun PrimaryShortcutCard(
 
     // 1. Escala elástica sobria Apple TV (1.055x) solo al interactuar
     val cardScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.055f else 1.0f,
+        targetValue = if (isFocused) 1.035f else 1.0f,
         animationSpec = spring(
-            dampingRatio = 0.78f,
+            dampingRatio = 0.9f,
             stiffness = 380f
         ),
         label = "card_scale"
@@ -65,7 +65,7 @@ fun PrimaryShortcutCard(
 
     // 2. Elevación y sombra difusa
     val cardElevation by animateFloatAsState(
-        targetValue = if (isFocused) 16f else 2f,
+        targetValue = if (isFocused) 8f else 0f,
         animationSpec = spring(
             dampingRatio = 0.8f,
             stiffness = 380f

@@ -74,7 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
+import cl.elboomlicanray.tvlauncher.presentation.home.ActivityDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -261,7 +261,7 @@ fun TouristGuideDialog(
             ) {
                 if (isPlayingVideo) {
                     val videoUrl = selectedAttraction.videoUrl.ifBlank { selectedAttraction.youtubeUrl }
-                    FullScreenVideoOverlay(
+                    cl.elboomlicanray.tvlauncher.presentation.modals.stay.FullScreenVideoOverlay(
                         title = selectedAttraction.name,
                         videoUrl = videoUrl,
                         onClose = { isPlayingVideo = false }
@@ -499,7 +499,9 @@ fun TouristGuideDialog(
                         Column(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
-                                .widthIn(max = 480.dp),
+                                .widthIn(max = 510.dp)
+                                .background(Color.Black.copy(alpha = 0.74f), RoundedCornerShape(14.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             // 1. Badge de Categoría con borde fino turquesa
@@ -1019,11 +1021,11 @@ fun TouristGuideDialog(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isFocused) Color(0xFF00E5FF) else Color.Transparent)
-                                        .padding(horizontal = if (isFocused) 6.dp else 2.dp, vertical = if (isFocused) 2.dp else 0.dp)
+                                        .background(if (isFocused) Color(0xFF00E5FF) else Color.Black.copy(alpha = 0.75f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = getCarouselDisplayName(item.name),
+                                        text = item.name,
                                         fontSize = 11.sp,
                                         fontWeight = when {
                                             isFocused -> FontWeight.Black
@@ -1067,391 +1069,6 @@ fun TouristGuideDialog(
  * Puente JavaScript para notificar de forma asíncrona y segura a Android
  * cuando un video finaliza en el reproductor web.
  */
-private class VideoEndBridge(private val onEnd: () -> Unit) {
-    @JavascriptInterface
-    fun onVideoEnded() {
-        Handler(Looper.getMainLooper()).post {
-            onEnd()
-        }
-    }
-}
-
-/**
- * Overlay de reproducción de video a pantalla completa adaptado para Smart TV.
- *
- * Maneja videos de YouTube mediante embed HTML5 optimizado para hardware de TV,
- * así como enlaces directos (MP4/HLS) mediante Media3 ExoPlayer.
- * Permite cerrar y volver a la misma ficha con el botón "Atrás" del control remoto
- * o automáticamente cuando el video termina.
- */
-@OptIn(UnstableApi::class)
-@Composable
-private fun FullScreenVideoOverlay(
-    title: String,
-    videoUrl: String,
-    onClose: () -> Unit
-) {
-    val context = LocalContext.current
-    val returnFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        try {
-            returnFocusRequester.requestFocus()
-        } catch (_: Exception) {}
-    }
-
-    val youtubeVideoId = remember(videoUrl) { extractYoutubeVideoId(videoUrl) }
-    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
-    var exoPlayerInstance by remember { mutableStateOf<ExoPlayer?>(null) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
-                    exoPlayerInstance?.pause()
-                    webViewInstance?.evaluateJavascript("if (player && player.pauseVideo) player.pauseVideo();", null)
-                    webViewInstance?.onPause()
-                }
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
-                    webViewInstance?.onResume()
-                    webViewInstance?.evaluateJavascript("if (player && player.playVideo) player.playVideo();", null)
-                    exoPlayerInstance?.play()
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    var feedbackAction by remember { mutableStateOf<String?>(null) }
-    var feedbackTrigger by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(feedbackTrigger) {
-        if (feedbackTrigger > 0L) {
-            kotlinx.coroutines.delay(650)
-            feedbackAction = null
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown) {
-                    when (keyEvent.key) {
-                        Key.Back, Key.Escape -> {
-                            onClose()
-                            true
-                        }
-                        Key.DirectionRight -> {
-                            if (youtubeVideoId != null) {
-                                webViewInstance?.evaluateJavascript("seekRelative(10);", null)
-                            } else {
-                                exoPlayerInstance?.let { p ->
-                                    val dur = if (p.duration > 0L) p.duration else Long.MAX_VALUE
-                                    p.seekTo(minOf(maxOf(0L, dur - 1000L), p.currentPosition + 10_000L))
-                                }
-                            }
-                            feedbackAction = "Adelantar +10s ⏩"
-                            feedbackTrigger++
-                            true
-                        }
-                        Key.DirectionLeft -> {
-                            if (youtubeVideoId != null) {
-                                webViewInstance?.evaluateJavascript("seekRelative(-10);", null)
-                            } else {
-                                exoPlayerInstance?.let { p -> p.seekTo(maxOf(0L, p.currentPosition - 10_000L)) }
-                            }
-                            feedbackAction = "Retroceder -10s ⏪"
-                            feedbackTrigger++
-                            true
-                        }
-                        Key.DirectionUp, Key.DirectionDown -> {
-                            // Consumir flechas hacia arriba o hacia abajo para aislar totalmente la TV
-                            true
-                        }
-                        else -> false
-                    }
-                } else {
-                    // En KeyUp consumir también las teclas para evitar propagación residual
-                    when (keyEvent.key) {
-                        Key.Back, Key.Escape,
-                        Key.DirectionRight, Key.DirectionLeft,
-                        Key.DirectionUp, Key.DirectionDown -> true
-                        else -> false
-                    }
-                }
-            }
-    ) {
-        if (youtubeVideoId != null) {
-            val htmlContent = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                    <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-                        #player { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
-                        .ytp-chrome-top, .ytp-watermark, .ytp-youtube-button, .ytp-show-cards-title,
-                        .ytp-pause-overlay, .ytp-ad-overlay-container, .ytp-ad-message-container,
-                        .video-ads, .ytp-ad-module, .ytp-ce-element { display: none !important; }
-                    </style>
-                </head>
-                <body>
-                    <div id="player"></div>
-                    <script>
-                        var tag = document.createElement('script');
-                        tag.src = "https://www.youtube.com/iframe_api";
-                        var firstScriptTag = document.getElementsByTagName('script')[0];
-                        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-                        var player;
-                        function onYouTubeIframeAPIReady() {
-                            player = new YT.Player('player', {
-                                height: '100%',
-                                width: '100%',
-                                videoId: '$youtubeVideoId',
-                                playerVars: {
-                                    'autoplay': 1,
-                                    'controls': 0,
-                                    'rel': 0,
-                                    'showinfo': 0,
-                                    'iv_load_policy': 3,
-                                    'modestbranding': 1,
-                                    'playsinline': 1,
-                                    'fs': 0,
-                                    'disablekb': 1,
-                                    'origin': 'https://www.youtube.com'
-                                },
-                                events: {
-                                    'onReady': function(e) {
-                                        try {
-                                            e.target.unMute();
-                                            e.target.setVolume(100);
-                                            e.target.playVideo();
-                                        } catch(err) {}
-                                    },
-                                    'onStateChange': function(e) {
-                                        try {
-                                            if (e.data === 0) {
-                                                if (window.AndroidHost && typeof window.AndroidHost.onVideoEnded === 'function') {
-                                                    window.AndroidHost.onVideoEnded();
-                                                }
-                                            }
-                                        } catch(err) {}
-                                    }
-                                }
-                            });
-                        }
-
-                        function seekRelative(sec) {
-                            try {
-                                if (player && typeof player.getCurrentTime === 'function') {
-                                    var curr = player.getCurrentTime();
-                                    var dur = (typeof player.getDuration === 'function') ? player.getDuration() : 999999;
-                                    var target = Math.max(0, Math.min(dur > 2 ? dur - 1 : dur, curr + sec));
-                                    player.seekTo(target, true);
-                                }
-                            } catch(err) {}
-                        }
-                    </script>
-                </body>
-                </html>
-            """.trimIndent()
-
-            DisposableEffect(Unit) {
-                onDispose {
-                    try {
-                        webViewInstance?.apply {
-                            removeJavascriptInterface("AndroidHost")
-                            stopLoading()
-                            onPause()
-                            resumeTimers()
-                            loadUrl("about:blank")
-                            clearHistory()
-                            removeAllViews()
-                            (parent as? ViewGroup)?.removeView(this)
-                            destroy()
-                        }
-                    } catch (_: Exception) {}
-                    webViewInstance = null
-                    System.gc()
-                }
-            }
-
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
-                        resumeTimers()
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        isFocusable = false
-                        isFocusableInTouchMode = false
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            mediaPlaybackRequiresUserGesture = false
-                            loadWithOverviewMode = true
-                            useWideViewPort = true
-                            allowFileAccess = false
-                            allowContentAccess = false
-                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
-                        }
-                        setBackgroundColor(android.graphics.Color.BLACK)
-                        webChromeClient = WebChromeClient()
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                val uri = request?.url ?: return false
-                                val host = uri.host ?: ""
-                                if (host.contains("youtube.com") ||
-                                    host.contains("googlevideo.com") ||
-                                    host.contains("ytimg.com") ||
-                                    host.contains("youtube-nocookie.com") ||
-                                    uri.toString() == "about:blank") {
-                                    return false
-                                }
-                                return true
-                            }
-                        }
-                        addJavascriptInterface(VideoEndBridge { onClose() }, "AndroidHost")
-                        setOnKeyListener { _, keyCode, event ->
-                            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
-                                onClose()
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
-                        webViewInstance = this
-                    }
-                },
-                update = { webView ->
-                    // Mantener activo
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Reproducción directa MP4 / HLS mediante Media3 ExoPlayer
-            val exoPlayer = remember(videoUrl) {
-                cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context).apply {
-                    setMediaItem(MediaItem.fromUri(videoUrl))
-                    addListener(object : Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_ENDED) {
-                                onClose()
-                            }
-                        }
-                    })
-                    prepare()
-                    playWhenReady = true
-                }
-            }
-
-            DisposableEffect(exoPlayer) {
-                exoPlayerInstance = exoPlayer
-                onDispose {
-                    exoPlayerInstance = null
-                    try {
-                        exoPlayer.stop()
-                        exoPlayer.clearMediaItems()
-                        exoPlayer.release()
-                    } catch (_: Exception) {}
-                }
-            }
-
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exoPlayer
-                        useController = false
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-
-        // Indicador minimalista de avance/retroceso (discreto en el tercio inferior, nunca tapa el centro)
-        AnimatedVisibility(
-            visible = feedbackAction != null,
-            enter = fadeIn(tween(60)) + scaleIn(initialScale = 0.90f),
-            exit = fadeOut(tween(180)),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 18.dp, vertical = 7.dp)
-            ) {
-                Text(
-                    text = feedbackAction ?: "",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        // Barra superior con botón minimalista "← Volver" (vidrio translúcido elegante, sin tapar el video)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 18.dp),
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val returnInteraction = remember { MutableInteractionSource() }
-            val returnFocused by returnInteraction.collectIsFocusedAsState()
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .focusRequester(returnFocusRequester)
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (returnFocused) Color.White.copy(alpha = 0.22f)
-                        else Color.Black.copy(alpha = 0.45f)
-                    )
-                    .border(
-                        width = if (returnFocused) 1.5.dp else 1.dp,
-                        color = if (returnFocused) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(50)
-                    )
-                    .clickable(
-                        interactionSource = returnInteraction,
-                        indication = null
-                    ) {
-                        onClose()
-                    }
-                    .focusable(interactionSource = returnInteraction)
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "← Volver",
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White
-                )
-            }
-        }
-    }
-}
-
 /**
  * Ordena la lista de atractivos conservando la secuencia canónica:
  * Licán Ray, Península Ziwilwe, Villarrica, Termas Geométricas, Huilo Huilo y Hua Hum.
@@ -1558,21 +1175,6 @@ private fun cleanSeason(raw: String, strings: cl.elboomlicanray.tvlauncher.prese
 }
 
 /**
- * Nombre corto para no desbordar en las tarjetas inferiores de televisión.
- */
-private fun getCarouselDisplayName(name: String): String {
-    return when {
-        name.contains("Licán Ray", ignoreCase = true) -> "Licán Ray"
-        name.contains("Ziwilwe", ignoreCase = true) -> "Península Ziwilwe"
-        name.contains("Villarrica", ignoreCase = true) -> "Villarrica"
-        name.contains("Geométricas", ignoreCase = true) -> "Termas Geométricas"
-        name.contains("Huilo Huilo", ignoreCase = true) -> "Huilo Huilo"
-        name.contains("Hua Hum", ignoreCase = true) -> "Hua Hum"
-        else -> name
-    }
-}
-
-/**
  * Abre Google Maps o muestra un mensaje amigable invitando a escanear el QR.
  */
 private fun openMapOrShowToast(context: Context, url: String, placeName: String) {
@@ -1597,7 +1199,7 @@ private fun extractYoutubeVideoId(url: String): String? {
     val pattern = ".*(?:youtu.be/|v/|u/\\w/|embed/|watch\\?v=|&v=)([^#&?]*).*".toRegex()
     val match = pattern.find(url)
     val id = match?.groups?.get(1)?.value
-    return if (!id.isNullOrBlank() && id.length in 10..12) id else null
+    return id?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
 }
 
 // =============================================================================

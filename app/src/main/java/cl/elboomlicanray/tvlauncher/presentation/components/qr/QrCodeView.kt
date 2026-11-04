@@ -1,5 +1,6 @@
 package cl.elboomlicanray.tvlauncher.presentation.components.qr
 
+import androidx.compose.ui.graphics.toArgb
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,13 +42,12 @@ fun QrCodeView(
     backgroundColor: Color = Color.White,
     codeColor: Color = Color.Black
 ) {
-    val qrBitmap = remember(content) {
-        generateQrBitmap(
-            text = content,
-            sizePixels = 512,
-            fgColor = android.graphics.Color.BLACK,
-            bgColor = android.graphics.Color.WHITE
-        )
+    val qrBitmap = androidx.compose.runtime.key(content, codeColor, backgroundColor) {
+        androidx.compose.runtime.produceState<Bitmap?>(null) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                generateQrBitmap(content, 1, codeColor.toArgb(), backgroundColor.toArgb())
+            }
+        }.value
     }
 
     Box(
@@ -65,6 +65,7 @@ fun QrCodeView(
                 modifier = Modifier
                     .fillMaxSize()
                     .aspectRatio(1f),
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
                 contentScale = ContentScale.Fit
             )
         }
@@ -85,7 +86,7 @@ private fun generateQrBitmap(
         val hints = HashMap<EncodeHintType, Any>().apply {
             put(EncodeHintType.CHARACTER_SET, "UTF-8")
             put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M)
-            put(EncodeHintType.MARGIN, 2) // Quiet zone estándar de 2 módulos
+            put(EncodeHintType.MARGIN, 4) // Quiet zone estándar de 2 módulos
         }
 
         val writer = QRCodeWriter()

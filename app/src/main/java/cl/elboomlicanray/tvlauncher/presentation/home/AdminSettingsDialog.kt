@@ -44,7 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import cl.elboomlicanray.tvlauncher.presentation.home.ActivityDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
@@ -84,6 +84,7 @@ fun AdminSettingsDialog(
     currentUnitId: Int,
     availableApps: List<AppItem> = emptyList(),
     initiallySelectedApps: Set<String> = emptySet(),
+    onReorderApps: (List<AppItem>) -> Unit,
     onVerifyPin: (String) -> Boolean,
     onSaveUnit: (Int) -> Unit,
     onSaveApps: (Set<String>) -> Unit = {},
@@ -101,6 +102,7 @@ fun AdminSettingsDialog(
     onDismiss: () -> Unit
 ) {
     var isPinVerified by remember { mutableStateOf(false) }
+    var ordering by remember { mutableStateOf(false) }
     var pinText by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
     var selectedUnitId by remember { mutableIntStateOf(currentUnitId) }
@@ -126,6 +128,13 @@ fun AdminSettingsDialog(
         }
     }
 
+    if (isPinVerified && ordering) {
+        cl.elboomlicanray.tvlauncher.presentation.modals.apps.StreamingAppsDialog(
+            apps = availableApps, onAppClick = {}, onReorderApps = onReorderApps,
+            onDismiss = { ordering = false }
+        )
+        return
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -244,7 +253,7 @@ fun AdminSettingsDialog(
                                 }
 
                                 Text(
-                                    text = "Ingresa el PIN de 4 dígitos para configurar esta pantalla (Por defecto: 1234)",
+                                    text = "Ingresa el PIN de 4 dígitos para configurar esta pantalla",
                                     fontSize = 13.sp,
                                     color = TextMuted,
                                     textAlign = TextAlign.Center,
@@ -284,7 +293,7 @@ fun AdminSettingsDialog(
 
                                 if (pinError) {
                                     Text(
-                                        text = "⚠️ PIN incorrecto. Intenta con 1234.",
+                                        text = "⚠️ PIN incorrecto. Intenta nuevamente.",
                                         color = Color(0xFFEF4444),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
@@ -569,6 +578,8 @@ fun AdminSettingsDialog(
                                             }
                                         }
 
+                                        AdminSmallActionButton(label = "Organizar aplicaciones", onClick = { ordering = true })
+                                        Spacer(Modifier.height(8.dp))
                                         LazyVerticalGrid(
                                             columns = GridCells.Fixed(2),
                                             modifier = Modifier.fillMaxSize(),

@@ -70,7 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
+import cl.elboomlicanray.tvlauncher.presentation.home.ActivityDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -402,7 +402,7 @@ fun MyStayDialog(
                                 "Reserva" to "RESERVA",
                                 "Fotos" to "FOTOS (${realPhotoImages.size.coerceAtLeast(1)})",
                                 "Camas" to "CAMAS",
-                                "Video Tour" to "VIDEO TOUR"
+
                             )
                             navTabs.forEachIndexed { idx, (tabKey, tabLabel) ->
                                 val isSelected = (tabKey == "Reserva" && selectedTab == "Reserva") ||
@@ -412,12 +412,13 @@ fun MyStayDialog(
                                 val interactionSource = remember { MutableInteractionSource() }
                                 val isFocused by interactionSource.collectIsFocusedAsState()
 
+                                val focusScale by androidx.compose.animation.core.animateFloatAsState(if (isFocused) 1.035f else 1f, tween(150), label = "tab focus")
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
                                         .then(if (idx == 0) Modifier.focusRequester(initialTabFocusRequester) else Modifier)
                                         .graphicsLayer {
-                                            val scale = if (isFocused) 1.06f else 1.0f
+                                            val scale = focusScale
                                             scaleX = scale
                                             scaleY = scale
                                         }
@@ -725,7 +726,7 @@ private fun ReservationOverviewLayout(
                 ) {
                     PlayCanvasIcon(color = Color.White, modifier = Modifier.size(11.dp))
                     Text(
-                        text = "Ver Video Tour",
+                        text = "Ver recorrido",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
@@ -765,7 +766,7 @@ private fun ReservationOverviewLayout(
                         modifier = Modifier.size(13.dp)
                     )
                     Text(
-                        text = "WhatsApp Recepción",
+                        text = "Contactar recepción",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (waFocused) Color(0xFF030712) else Color.White,
@@ -774,85 +775,7 @@ private fun ReservationOverviewLayout(
                     )
                 }
 
-                // C. Fotos
-                val photosInteraction = remember { MutableInteractionSource() }
-                val photosFocused by photosInteraction.collectIsFocusedAsState()
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val scale = if (photosFocused) 1.08f else 1.0f
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        .clip(RoundedCornerShape(50))
-                        .background(if (photosFocused) Color(0xFF00E5FF) else Color(0xCC0D2030))
-                        .border(
-                            width = if (photosFocused) 2.5.dp else 1.2.dp,
-                            color = if (photosFocused) Color.White else Color(0xFF00E5FF).copy(alpha = 0.70f),
-                            shape = RoundedCornerShape(50)
-                        )
-                        .clickable(interactionSource = photosInteraction, indication = null) {
-                            onNavigateToTab("Fotos")
-                        }
-                        .focusable(interactionSource = photosInteraction)
-                        .padding(horizontal = 16.dp, vertical = 7.dp)
-                ) {
-                    PhotoCanvasIcon(
-                        color = if (photosFocused) Color(0xFF030712) else Color(0xFF00E5FF),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = "Fotos ($photoCount)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (photosFocused) Color(0xFF030712) else Color.White,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-
-                // D. Camas
-                val bedsInteraction = remember { MutableInteractionSource() }
-                val bedsFocused by bedsInteraction.collectIsFocusedAsState()
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val scale = if (bedsFocused) 1.08f else 1.0f
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        .clip(RoundedCornerShape(50))
-                        .background(if (bedsFocused) Color(0xFF818CF8) else Color(0xCC1A1F36))
-                        .border(
-                            width = if (bedsFocused) 2.5.dp else 1.2.dp,
-                            color = if (bedsFocused) Color.White else Color(0xFF818CF8).copy(alpha = 0.70f),
-                            shape = RoundedCornerShape(50)
-                        )
-                        .clickable(interactionSource = bedsInteraction, indication = null) {
-                            onNavigateToTab("Camas")
-                        }
-                        .focusable(interactionSource = bedsInteraction)
-                        .padding(horizontal = 16.dp, vertical = 7.dp)
-                ) {
-                    BedCanvasIcon(
-                        color = if (bedsFocused) Color(0xFF030712) else Color(0xFF818CF8),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = "Dormitorios y Camas",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (bedsFocused) Color(0xFF030712) else Color.White,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
             }
         }
 
@@ -915,7 +838,7 @@ private fun ReservationOverviewLayout(
                     ClockCanvasIcon(color = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
                     Column {
                         Text(
-                            text = "CHECK-OUT",
+                            text = if (stay.isCheckoutDay) "SALIDA HOY" else "CHECK-OUT",
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp,
@@ -927,7 +850,7 @@ private fun ReservationOverviewLayout(
                             text = checkoutTimeStr,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
+                            color = if (stay.isCheckoutDay) Color(0xFFFFD580) else Color.White,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -962,6 +885,7 @@ private fun ReservationOverviewLayout(
                     }
                 }
 
+                if (stay.isOccupied) {
                 // Divisor fino
                 Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.20f)))
 
@@ -990,6 +914,7 @@ private fun ReservationOverviewLayout(
                             softWrap = false
                         )
                     }
+                }
                 }
             }
 
@@ -1429,7 +1354,10 @@ private fun VideoTourPanelView(
  * Puente JavaScript para notificar de forma asíncrona a Android
  * cuando finaliza un video en la sección Mi Estadía.
  */
-private class VideoEndBridgeStay(private val onEnd: () -> Unit) {
+private class VideoEndBridgeStay(private val ready: () -> Unit, private val error: () -> Unit, private val onEnd: () -> Unit) {
+    @JavascriptInterface fun started() { Handler(Looper.getMainLooper()).post { ready() } }
+    @JavascriptInterface fun failed() { Handler(Looper.getMainLooper()).post { error() } }
+
     @JavascriptInterface
     fun onVideoEnded() {
         Handler(Looper.getMainLooper()).post {
@@ -1443,11 +1371,50 @@ private class VideoEndBridgeStay(private val onEnd: () -> Unit) {
  */
 @OptIn(UnstableApi::class)
 @Composable
-private fun FullScreenVideoOverlay(
-    title: String,
-    videoUrl: String,
-    onClose: () -> Unit
-) {
+internal fun FullScreenVideoOverlay(title: String, videoUrl: String, onClose: () -> Unit) {
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val events = cl.elboomlicanray.tvlauncher.presentation.home.MainActivityEvents
+        events.videoOpen = true
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) onClose()
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            events.videoOpen = false
+            events.notifyUserInteraction()
+        }
+    }
+    var attempt by remember(videoUrl) { mutableIntStateOf(0) }
+    key(videoUrl, attempt) {
+        var started by remember { mutableStateOf(false) }
+        var failed by remember { mutableStateOf(false) }
+        LaunchedEffect(started) {
+            if (!started) { kotlinx.coroutines.delay(45_000); failed = true }
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            if (!failed) {
+                VideoSession(title, videoUrl, onClose, { started = true }, { failed = true })
+                if (!started) Text("$title · Abriendo video…", color = Color.White, fontSize = 18.sp)
+            } else {
+                val retryFocus = remember { FocusRequester() }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("No se pudo reproducir $title", color = Color.White)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        androidx.tv.material3.Button(onClick = { attempt++ }, modifier = Modifier.focusRequester(retryFocus)) { Text("Reintentar") }
+                        androidx.tv.material3.Button(onClick = onClose) { Text("Volver") }
+                    }
+                }
+                LaunchedEffect(Unit) { retryFocus.requestFocus() }
+            }
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun VideoSession(title: String, videoUrl: String, onClose: () -> Unit, onStarted: () -> Unit, onFailure: () -> Unit) {
     val context = LocalContext.current
     val returnFocusRequester = remember { FocusRequester() }
 
@@ -1579,7 +1546,7 @@ private fun FullScreenVideoOverlay(
                                     'playsinline': 1,
                                     'fs': 0,
                                     'disablekb': 1,
-                                    'origin': 'https://www.youtube.com'
+                                    'origin': 'https://elboom.cl'
                                 },
                                 events: {
                                     'onReady': function(e) {
@@ -1589,7 +1556,9 @@ private fun FullScreenVideoOverlay(
                                             e.target.playVideo();
                                         } catch(err) {}
                                     },
+                                    'onError': function() { window.AndroidHost.failed(); },
                                     'onStateChange': function(e) {
+                                        if (e.data === 1) window.AndroidHost.started();
                                         try {
                                             if (e.data === 0) {
                                                 if (window.AndroidHost && typeof window.AndroidHost.onVideoEnded === 'function') {
@@ -1633,7 +1602,6 @@ private fun FullScreenVideoOverlay(
                         }
                     } catch (_: Exception) {}
                     webViewInstance = null
-                    System.gc()
                 }
             }
 
@@ -1675,7 +1643,7 @@ private fun FullScreenVideoOverlay(
                                 return true
                             }
                         }
-                        addJavascriptInterface(VideoEndBridgeStay { onClose() }, "AndroidHost")
+                        addJavascriptInterface(VideoEndBridgeStay(onStarted, onFailure, onClose), "AndroidHost")
                         setOnKeyListener { _, keyCode, event ->
                             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) {
                                 onClose()
@@ -1684,7 +1652,7 @@ private fun FullScreenVideoOverlay(
                                 false
                             }
                         }
-                        loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
+                        loadDataWithBaseURL("https://elboom.cl/", htmlContent, "text/html", "UTF-8", null)
                         webViewInstance = this
                     }
                 },
@@ -1698,6 +1666,8 @@ private fun FullScreenVideoOverlay(
                 cl.elboomlicanray.tvlauncher.presentation.playback.createTvPlayer(context).apply {
                     setMediaItem(MediaItem.fromUri(videoUrl))
                     addListener(object : Player.Listener {
+                        override fun onRenderedFirstFrame() = onStarted()
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) = onFailure()
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             if (playbackState == Player.STATE_ENDED) {
                                 onClose()
@@ -1812,7 +1782,7 @@ private fun extractYoutubeVideoId(url: String): String? {
     val pattern = ".*(?:youtu.be/|v/|u/\\w/|embed/|watch\\?v=|&v=)([^#&?]*).*".toRegex()
     val match = pattern.find(url)
     val id = match?.groups?.get(1)?.value
-    return if (!id.isNullOrBlank() && id.length in 10..12) id else null
+    return id?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
 }
 
 private fun Number.formatNumber(): String {

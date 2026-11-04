@@ -31,6 +31,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.height
@@ -86,7 +88,7 @@ fun AmbientScreensaver(
             .focusRequester(focusRequester)
             .focusable()
             .onPreviewKeyEvent {
-                onDismiss()
+                if (it.type == KeyEventType.KeyUp) onDismiss()
                 true
             }
             .clickable { onDismiss() }

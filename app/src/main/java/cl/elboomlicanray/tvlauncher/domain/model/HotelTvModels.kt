@@ -116,6 +116,9 @@ enum class ScreenStayState {
 
 @Immutable
 data class CleaningInfo(
+    val sheetTotal: Int? = null,
+    val sheetDetails: String = "",
+    val readyToken: String = "",
     val isDirty: Boolean = false,
     val status: String = "LIMPIA", // "SUCIA" o "LIMPIA"
     val sheetsCount: Int = 0,
@@ -124,6 +127,9 @@ data class CleaningInfo(
 
 @Immutable
 data class NextGuestInfo(
+    val peopleLabel: String = "",
+    val phone: String = "",
+    val pets: Boolean? = null,
     val fullName: String = "",
     val checkinTime: String = "15:00 hrs",
     val adultsCount: Int = 2,

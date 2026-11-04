@@ -398,9 +398,6 @@ fun HomeScreen(
                         activeModal = "none"
                         viewModel.onAppClicked(app)
                     },
-                    onReorderApps = { newOrder ->
-                        viewModel.reorderApps(newOrder)
-                    },
                     onDismiss = { activeModal = "none" }
                 )
             }
@@ -428,6 +425,7 @@ fun HomeScreen(
             AdminSettingsDialog(
                 currentUnitId = uiState.configuredUnit.id,
                 availableApps = allInstalled,
+                onReorderApps = viewModel::reorderApps,
                 initiallySelectedApps = uiState.streamingApps.map { it.packageName }.toSet(),
                 onVerifyPin = { pin -> viewModel.verifyAdminPin(pin) },
                 isPinLockedOut = { viewModel.isPinLockedOut() },
@@ -504,7 +502,11 @@ fun HomeScreen(
         }
 
         // Salvapantallas Ambiental "Lican Ray Paraíso"
-        if (uiState.isScreensaverActive) {
+        if (uiState.isScreensaverActive && !MainActivityEvents.videoOpen) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { viewModel.dismissScreensaver() },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
             AmbientScreensaver(
                 unitName = uiState.configuredUnit.name,
                 currentTime = uiState.currentTimeString,
@@ -513,6 +515,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 onDismiss = { viewModel.dismissScreensaver() }
             )
+            }
         }
 
         // Modal de Configuración Inicial de Cabaña y PIN/Token

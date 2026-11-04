@@ -1,7 +1,7 @@
 # DOCUMENTACIÓN OFICIAL: INTEGRACIÓN Y API CMS ELBOOM.CL
 
 > **Alojamientos El Boom · Lican Ray (Chile)**  
-> **Sistema Smart TV Launcher para Android TV (v1.0.45+)**  
+> **Sistema Smart TV Launcher para Android TV (v1.0.50 / Build 50+)**  
 > Documento técnico exhaustivo para Desarrolladores Backend, Ingenieros de Sistemas y Modelos de Inteligencia Artificial.
 
 ---
@@ -30,7 +30,7 @@ PRODUCCIÓN: https://elboom.cl
 ### 2.2 User-Agent Oficial
 Todas las solicitudes HTTP enviadas desde el televisor incluyen un encabezado `User-Agent` que identifica la versión de la app:
 ```http
-User-Agent: ElBoom-SmartTV/1.0.45
+User-Agent: ElBoom-SmartTV/1.0.50
 ```
 *(Para descargas OTA de binarios APK o verificación de versión se utiliza el User-Agent estándar de Android TV para compatibilidad con Cloudflare/CDNs).*
 
@@ -85,7 +85,7 @@ Host: elboom.cl
 Accept: application/json
 Cache-Control: no-cache
 Authorization: Bearer boom_cab1_secure
-User-Agent: ElBoom-SmartTV/1.0.45
+User-Agent: ElBoom-SmartTV/1.0.50
 ```
 
 #### Respuestas HTTP
@@ -355,7 +355,7 @@ Content-Type: application/json; charset=UTF-8
 Accept: application/json
 Authorization: Bearer <TOKEN_DE_CABAÑA>
 x-tv-token: <TOKEN_DE_CABAÑA>
-User-Agent: ElBoom-SmartTV/1.0.45
+User-Agent: ElBoom-SmartTV/1.0.50
 ```
 
 #### Cuerpo de la Solicitud (Request JSON Body)
@@ -473,13 +473,13 @@ User-Agent: ElBoom-SmartTV/1.0.45
 #### Estructura del JSON de Versión (`version.json`)
 ```json
 {
-  "versionCode": 46,
-  "versionName": "1.0.45",
-  "apkUrl": "https://github.com/kioxop/Alojamientos-el-boom-APP-TV/releases/download/v1.0.45/app-release.apk",
-  "downloadUrl": "https://github.com/kioxop/Alojamientos-el-boom-APP-TV/releases/download/v1.0.45/app-release.apk",
+  "versionCode": 50,
+  "versionName": "1.0.50",
+  "apkUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.50/app-release.apk",
+  "downloadUrl": "https://github.com/K1OX1/app-tv-elboom/releases/download/v1.0.50/app-release.apk",
   "sha256": "4a7b92f8c5e1d4b6a8e0f2c3d5a7b9e1f3a5c7d9e1b3a5c7d9e1f3a5c7d9e1b3",
-  "releaseNotes": "Optimización quirúrgica del reproductor de video con aceleración GPU por hardware, control D-Pad nativo y descripción de atractivos turísticos con auto-scroll.",
-  "changelog": "1. Bitrate adaptativo DASH.\n2. Cero bloqueos de memoria en TV 1GB RAM.\n3. Salida en 1 toque con botón Back."
+  "releaseNotes": "Alineación de versión v1.0.50 (Build 50). Notificación de aseo finalizado al CMS, diálogo de confirmación de cabaña preparada y ActivityDialog con restablecimiento automático de temporizador.",
+  "changelog": "1. Sincronización versionCode 50 y versionName 1.0.50.\n2. Endpoint POST /api/hotel-tv/cleaning/ready para confirmación de aseo.\n3. Diálogo de confirmación interactivo para camareras.\n4. Soporte unificado de video overlay y corrección de interacción."
 }
 ```
 
@@ -581,7 +581,7 @@ A continuación tienes el contrato estricto de APIs requerido por los televisore
    - Retorna objeto "property" con: schedules (checkIn, checkOut, quietHours), tinajasSection (title, noticeText), tinajaOptions, recreation (indoorGames, kayaks, outdoorPark), petPolicy (feePerNightCLP, maxPets, allowedTypes, requirement), connectivity, faqs (array de question y answer).
 
 6. GET /tv/version.json
-   - Retorna: { "versionCode": 46, "versionName": "1.0.45", "apkUrl": "...", "downloadUrl": "...", "sha256": "...", "changelog": "...", "releaseNotes": "..." }.
+   - Retorna: { "versionCode": 50, "versionName": "1.0.50", "apkUrl": "...", "downloadUrl": "...", "sha256": "...", "changelog": "...", "releaseNotes": "..." }.
 ```
 
 ---

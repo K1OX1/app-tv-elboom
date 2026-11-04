@@ -73,6 +73,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private var screensaverJob: Job? = null
+    private var refreshJob: Job? = null
     private val SCREENSAVER_TIMEOUT_MS = 180_000L // 3 minutos de inactividad
 
     init {
@@ -174,7 +175,7 @@ class HomeViewModel @Inject constructor(
     fun reorderApps(newOrder: List<AppItem>) {
         val orderedPackages = newOrder.map { it.packageName }
         preferencesHelper.setCustomAppOrder(orderedPackages)
-        _uiState.update { it.copy(streamingApps = newOrder) }
+        _uiState.update { state -> state.copy(streamingApps = applyCustomAppOrder(state.streamingApps, orderedPackages)) }
 
         val currentAll = _allInstalledApps.value
         if (currentAll.isNotEmpty()) {
@@ -194,7 +195,11 @@ class HomeViewModel @Inject constructor(
         refreshHotelAndWeatherData()
     }
 
-    fun refreshHotelAndWeatherData() {
+    private var nextCatalogRefresh = 0L
+    private var nextWeatherRefresh = 0L
+
+    fun refreshHotelAndWeatherData(periodic: Boolean = false) {
+        refreshJob?.cancel()
         val unit = preferencesHelper.getConfiguredUnit()
         val token = preferencesHelper.getUnitToken()
 
@@ -213,7 +218,7 @@ class HomeViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
+        refreshJob = viewModelScope.launch {
             // 1. Stay en vivo (Nobeds PMS)
             val stayResult = hotelTvRepository.fetchHotelStayData()
             stayResult.fold(
@@ -297,15 +302,21 @@ class HomeViewModel @Inject constructor(
             )
 
             // 2. Clima Lican Ray
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (!periodic || now >= nextWeatherRefresh) {
             val weatherResult = hotelTvRepository.fetchLicanRayWeather()
             weatherResult.onSuccess { weatherInfo ->
+                nextWeatherRefresh = now + 15 * 60_000L
                 _uiState.update { it.copy(weather = weatherInfo) }
             }
+
+            }
+            if (periodic && now < nextCatalogRefresh) return@launch
 
             // 3. Cabañas y Showcase Dinámico (Fotos HD, Video Tour, Camas)
             val accommodationsResult = hotelTvRepository.fetchDynamicAccommodations()
             accommodationsResult.onSuccess { cabins ->
-                val currentCabin = cabins.firstOrNull { it.id == unit.id } ?: cabins.firstOrNull()
+                val currentCabin = cabins.firstOrNull { it.id == unit.id }
                 _uiState.update {
                     it.copy(
                         allCabins = cabins,
@@ -322,6 +333,7 @@ class HomeViewModel @Inject constructor(
 
             // 5. Normas, Reglas, Tinajas, Sala de Juegos y FAQs
             val propertyResult = hotelTvRepository.fetchDynamicProperty()
+            if (accommodationsResult.isSuccess && guideResult.isSuccess && propertyResult.isSuccess) nextCatalogRefresh = now + 30 * 60_000L
             propertyResult.onSuccess { propInfo ->
                 _uiState.update { it.copy(propertyInfo = propInfo) }
             }
@@ -344,7 +356,7 @@ class HomeViewModel @Inject constructor(
                 val isTurnaround = (hour in 11..14) || (hour == 10 && min >= 45) || (hour == 15 && min <= 15)
                 val intervalMs = if (isTurnaround) 45_000L else 180_000L
                 delay(intervalMs)
-                refreshHotelAndWeatherData()
+                refreshHotelAndWeatherData(periodic = true)
             }
         }
     }
@@ -414,6 +426,7 @@ class HomeViewModel @Inject constructor(
         screensaverJob?.cancel()
         screensaverJob = viewModelScope.launch {
             delay(SCREENSAVER_TIMEOUT_MS)
+            if (MainActivityEvents.videoOpen) return@launch
             _uiState.update { it.copy(isScreensaverActive = true) }
             MainActivityEvents.isScreensaverShowing = true
         }
@@ -501,39 +514,17 @@ class HomeViewModel @Inject constructor(
      * Activa el modo Huésped / Limpio de inmediato si el huésped llega temprano a su cabaña.
      * Guarda la confirmación en SharedPreferences para que jamás vuelva a mostrar la ficha de aseo.
      */
+    private var cleaningRequest: Job? = null
+
     fun activateGuestModeOrMarkClean() {
-        onUserInteraction()
-        val unit = preferencesHelper.getConfiguredUnit()
-        val nextGuest = _uiState.value.guestStay.nextGuestInfo
-        val guestName = nextGuest?.fullName ?: ""
-        if (guestName.isNotBlank()) {
-            preferencesHelper.setUnitGuestCheckedIn(unit.id, guestName, true)
-        }
-        preferencesHelper.setUnitForceClean(unit.id, true)
-
-        val firstName = if (guestName.isNotBlank()) {
-            guestName.trim().split("\\s+".toRegex()).firstOrNull() ?: "Estimado Huésped"
-        } else "Estimado Huésped"
-
-        _uiState.update { state ->
-            val updatedStay = state.guestStay.copy(
-                isOccupied = true,
-                screenState = ScreenStayState.IN_STAY,
-                title = "¡Bienvenido, $firstName!",
-                subtitle = "Alojamientos El Boom · ${guestName.ifBlank { unit.name }}",
-                guestFullName = guestName,
-                guestFirstName = firstName,
-                adultsCount = nextGuest?.adultsCount ?: state.guestStay.adultsCount,
-                childrenCount = nextGuest?.childrenCount ?: state.guestStay.childrenCount,
-                totalGuests = nextGuest?.totalGuests ?: state.guestStay.totalGuests,
-                checkinDate = "Hoy",
-                checkinOfficialTime = nextGuest?.checkinTime ?: "15:00 hrs",
-                checkoutDate = "",
-                stayProgress = "Llegada hoy",
-                balanceMessage = "Cuenta al día",
-                cleaningInfo = state.guestStay.cleaningInfo.copy(isDirty = false, status = "LIMPIA")
-            )
-            state.copy(guestStay = updatedStay)
+        if (cleaningRequest?.isActive == true) return
+        val state = _uiState.value
+        val task = state.guestStay.cleaningInfo.readyToken
+        if (task.isBlank()) return
+        cleaningRequest = viewModelScope.launch {
+            val ok = hotelTvRepository.markCleaningReady(state.configuredUnit.id, task)
+            android.widget.Toast.makeText(context, if (ok) "Aseo confirmado" else "No se pudo confirmar el aseo", android.widget.Toast.LENGTH_SHORT).show()
+            refreshHotelAndWeatherData()
         }
     }
 

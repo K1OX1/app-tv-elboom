@@ -23,6 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -42,7 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import cl.elboomlicanray.tvlauncher.presentation.home.ActivityDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -67,7 +71,7 @@ fun StreamingAppsDialog(
     selectedLanguage: String = "ES",
     isSmartDnsEnabled: Boolean = false,
     onAppClick: (AppItem) -> Unit,
-    onReorderApps: (List<AppItem>) -> Unit = {},
+    onReorderApps: ((List<AppItem>) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -79,7 +83,7 @@ fun StreamingAppsDialog(
     var currentAppsList by remember(apps) { mutableStateOf(apps) }
 
     // Estados de modo organización / reordenamiento
-    var isReorderMode by remember { mutableStateOf(false) }
+    val isReorderMode = onReorderApps != null
     var movingAppPackage by remember { mutableStateOf<String?>(null) }
 
     val totalPages = remember(currentAppsList) {
@@ -114,7 +118,6 @@ fun StreamingAppsDialog(
         val item = updated.removeAt(fromIndex)
         updated.add(toIndex, item)
         currentAppsList = updated
-        onReorderApps(updated)
 
         // Verificar si cruzó a otra página
         val newPage = toIndex / APPS_PER_PAGE
@@ -152,30 +155,13 @@ fun StreamingAppsDialog(
     }
 
     Dialog(
-        onDismissRequest = {
-            if (isReorderMode) {
-                isReorderMode = false
-                movingAppPackage = null
-                onReorderApps(currentAppsList)
-            } else {
-                onDismiss()
-            }
-        },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true
         )
     ) {
-        BackHandler {
-            if (isReorderMode) {
-                isReorderMode = false
-                movingAppPackage = null
-                onReorderApps(currentAppsList)
-                Toast.makeText(context, "Orden de apps guardado", Toast.LENGTH_SHORT).show()
-            } else {
-                onDismiss()
-            }
-        }
+        BackHandler(onBack = onDismiss)
 
         AnimatedVisibility(
             visible = isVisible,
@@ -190,7 +176,7 @@ fun StreamingAppsDialog(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFF091428),
+                                Color(0xFF102C36),
                                 Color(0xFF050B18),
                                 Color(0xFF020612)
                             )
@@ -213,9 +199,11 @@ fun StreamingAppsDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Box(Modifier.width(4.dp).height(48.dp).background(TvTokens.CyanNeon, RoundedCornerShape(2.dp)))
+                                Column {
                                 Text(
-                                    text = strings.streamingDialogTitle,
+                                    text = if (isReorderMode) "Organizar aplicaciones" else strings.streamingDialogTitle,
                                     style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 26.sp
@@ -224,10 +212,12 @@ fun StreamingAppsDialog(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = strings.streamingDialogSubtitle,
+                                    text = if (isReorderMode) "Administrador · Selecciona una app para moverla" else "${strings.streamingDialogSubtitle} · ${currentAppsList.size}",
                                     fontSize = 13.sp,
                                     color = Color(0xFF94A3B8)
                                 )
+                            }
+
                             }
 
                             Row(
@@ -252,7 +242,7 @@ fun StreamingAppsDialog(
                                 }
 
                                 // Botón "⇅ Organizar" / "✓ Listo"
-                                OrganizeModePillButton(
+                                if (isReorderMode) OrganizeModePillButton(
                                     isReorderMode = isReorderMode,
                                     focusRequester = organizeButtonFocusRequester,
                                     onRight = { closeButtonFocusRequester.requestFocus(); true },
@@ -262,16 +252,8 @@ fun StreamingAppsDialog(
                                         try { appFocusRequesters[targetIndex].requestFocus() } catch (_: Exception) {}
                                     },
                                     onClick = {
-                                        if (isReorderMode) {
-                                            isReorderMode = false
-                                            movingAppPackage = null
-                                            onReorderApps(currentAppsList)
-                                            Toast.makeText(context, "Orden de apps guardado", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            isReorderMode = true
-                                            movingAppPackage = null
-                                            try { appFocusRequesters[0].requestFocus() } catch (_: Exception) {}
-                                        }
+                                        onReorderApps?.invoke(currentAppsList)
+                                        onDismiss()
                                     }
                                 )
 
@@ -279,20 +261,13 @@ fun StreamingAppsDialog(
                                 CloseModalPillButton(
                                     focusRequester = closeButtonFocusRequester,
                                     label = strings.close,
-                                    onLeft = { organizeButtonFocusRequester.requestFocus(); true },
+                                    onLeft = { if (isReorderMode) organizeButtonFocusRequester.requestFocus(); isReorderMode },
                                     onDown = {
                                         val safeCount = minOf(APPS_PER_PAGE, maxOf(1, currentAppsList.size - currentPage * APPS_PER_PAGE))
                                         val targetIndex = minOf(COLUMNS_PER_ROW - 1, safeCount - 1)
                                         try { appFocusRequesters[targetIndex].requestFocus() } catch (_: Exception) {}
                                     },
-                                    onClick = {
-                                        if (isReorderMode) {
-                                            isReorderMode = false
-                                            movingAppPackage = null
-                                            onReorderApps(currentAppsList)
-                                        }
-                                        onDismiss()
-                                    }
+                                    onClick = onDismiss
                                 )
                             }
                         }
@@ -405,7 +380,7 @@ fun StreamingAppsDialog(
                                                 true
                                             } else false
                                         } else {
-                                            if (colIndex < 3) {
+                                            if (isReorderMode && colIndex < 3) {
                                                 organizeButtonFocusRequester.requestFocus()
                                             } else {
                                                 closeButtonFocusRequester.requestFocus()
@@ -670,8 +645,7 @@ private fun AppLandscapeTile(
     onDirectionUp: () -> Boolean,
     onDirectionDown: () -> Boolean,
     modifier: Modifier = Modifier,
-    tileWidth: Dp = 160.dp,
-    tileHeight: Dp = 104.dp
+    tileWidth: Dp = 160.dp
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -748,7 +722,20 @@ private fun AppLandscapeTile(
         Box(
             modifier = Modifier
                 .width(tileWidth)
-                .height(tileHeight)
+                .aspectRatio(16f / 9f)
+                .drawWithCache {
+                    val halo = listOf(4.dp to 0.045f, 2.dp to 0.095f)
+                    onDrawBehind {
+                        if (isFocused || isBeingMoved) {
+                            for ((spread, opacity) in halo) {
+                                val edge = spread.toPx()
+                                drawRoundRect(TvTokens.CyanNeon.copy(alpha = opacity),
+                                    Offset(-edge, -edge), Size(size.width + 2 * edge, size.height + 2 * edge),
+                                    CornerRadius(16.dp.toPx() + edge))
+                            }
+                        }
+                    }
+                }
                 .background(containerBg, shape)
                 .border(borderWidth, borderColor, shape),
             contentAlignment = Alignment.Center
@@ -766,18 +753,8 @@ private fun AppLandscapeTile(
                             bitmap = app.bannerBitmap,
                             contentDescription = app.name,
                             modifier = Modifier
-                                .fillMaxSize()
-                                .clip(shape),
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-
-                    app.iconBitmap != null -> {
-                        Image(
-                            bitmap = app.iconBitmap,
-                            contentDescription = app.name,
-                            modifier = Modifier.size(54.dp),
-                            contentScale = ContentScale.Fit
+                                .fillMaxSize(),
+                            contentScale = ContentScale.Crop
                         )
                     }
 
@@ -789,9 +766,8 @@ private fun AppLandscapeTile(
                                 painter = bannerPainter,
                                 contentDescription = app.name,
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(shape),
-                                contentScale = ContentScale.Fit
+                                    .fillMaxSize(),
+                                contentScale = ContentScale.Crop
                             )
                         } else {
                             Text(
@@ -803,6 +779,15 @@ private fun AppLandscapeTile(
                                 modifier = Modifier.padding(horizontal = 8.dp)
                             )
                         }
+                    }
+
+                    app.iconBitmap != null -> {
+                        Image(
+                            bitmap = app.iconBitmap,
+                            contentDescription = app.name,
+                            modifier = Modifier.size(54.dp),
+                            contentScale = ContentScale.Fit
+                        )
                     }
 
                     app.iconDrawable != null -> {
@@ -838,6 +823,18 @@ private fun AppLandscapeTile(
                     }
                 }
             }
+
+            Box(Modifier.matchParentSize().clip(shape).drawWithCache {
+                val sheen = Brush.linearGradient(
+                    0f to Color.White.copy(alpha = 0.19f),
+                    0.34f to Color.White.copy(alpha = 0.055f),
+                    0.35f to Color.Transparent,
+                    0.86f to Color.Transparent,
+                    1f to Color.White.copy(alpha = 0.08f),
+                    start = Offset.Zero, end = Offset(size.width * 0.72f, size.height)
+                )
+                onDrawBehind { drawRect(sheen) }
+            })
 
             // Indicador flotante cuando la app está en modo "Moviendo"
             if (isBeingMoved) {
