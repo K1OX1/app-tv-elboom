@@ -16,8 +16,8 @@ android {
         applicationId = "cl.elboomlicanray.tvlauncher"
         minSdk = 26 // Android TV 8.0 Oreo (Soporte óptimo para hardware TV legado y moderno)
         targetSdk = 35
-        versionCode = 51
-        versionName = "1.0.51"
+        versionCode = 52
+        versionName = "1.0.52"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -127,6 +127,10 @@ dependencies {
 
     // Generador de Códigos QR Estándar ISO/IEC (ZXing)
     implementation(libs.zxing.core)
+
+    // Unit Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }
 
 

@@ -208,31 +208,40 @@ fun HomeScreen(
                 )
         )
 
-        // CONTENEDOR PRINCIPAL CON BARRA SUPERIOR FIJA
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    start = TvDimens.SafeMarginHorizontal,
-                    end = TvDimens.SafeMarginHorizontal,
-                    top = TvDimens.SafeMarginTop
-                )
-        ) {
-            // BARRA SUPERIOR FIJA: ESTADO, CONEXIÓN Y MARCA HOSPITALARIA
-            LauncherTopHeader(
-                currentTime = uiState.currentTimeString,
-                currentDate = uiState.currentDateString.ifEmpty { "Mar 6 May" },
-                temperature = "${uiState.weather.temperatureC.toInt()}°C",
-                selectedLanguage = currentLanguage,
-                weatherConditionIcon = uiState.weather.conditionIcon,
-                weatherDescription = uiState.weather.conditionDescription,
-                connectionState = uiState.connectionStatus.state,
-                unitName = uiState.configuredUnit.name,
-                onWeatherClick = { activeModal = "weather" },
-                onLanguageClick = { activeModal = "language" },
-                onOwnerOverrideRequested = { viewModel.openInitialSetupDialog() },
-                onAdminRequested = { viewModel.openAdminDialog() }
+        if (uiState.isPairingScreenVisible) {
+            val pairingViewModel: cl.elboomlicanray.tvlauncher.presentation.pairing.TvPairingViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            cl.elboomlicanray.tvlauncher.presentation.pairing.TvPairingScreen(
+                viewModel = pairingViewModel,
+                onPairingSuccess = { unitId ->
+                    viewModel.onPairingSuccess(unitId)
+                }
             )
+        } else {
+            // CONTENEDOR PRINCIPAL CON BARRA SUPERIOR FIJA
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = TvDimens.SafeMarginHorizontal,
+                        end = TvDimens.SafeMarginHorizontal,
+                        top = TvDimens.SafeMarginTop
+                    )
+            ) {
+                // BARRA SUPERIOR FIJA: ESTADO, CONEXIÓN Y MARCA HOSPITALARIA
+                LauncherTopHeader(
+                    currentTime = uiState.currentTimeString,
+                    currentDate = uiState.currentDateString.ifEmpty { "Mar 6 May" },
+                    temperature = "${uiState.weather.temperatureC.toInt()}°C",
+                    selectedLanguage = currentLanguage,
+                    weatherConditionIcon = uiState.weather.conditionIcon,
+                    weatherDescription = uiState.weather.conditionDescription,
+                    connectionState = uiState.connectionStatus.state,
+                    unitName = uiState.configuredUnit.name,
+                    onWeatherClick = { activeModal = "weather" },
+                    onLanguageClick = { activeModal = "language" },
+                    onOwnerOverrideRequested = { viewModel.unpairAndStartPairing() },
+                    onAdminRequested = { viewModel.openAdminDialog() }
+                )
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -330,6 +339,7 @@ fun HomeScreen(
             }
         }
     }
+}
 
         // ==============================================================
         // GESTIÓN DE MODALES AISLADOS
@@ -437,7 +447,10 @@ fun HomeScreen(
                 onOpenNetworkSettings = { viewModel.openTvNetworkSettings() },
                 onOpenInitialSetup = {
                     viewModel.closeAdminDialog()
-                    viewModel.openInitialSetupDialog()
+                    viewModel.unpairAndStartPairing()
+                },
+                onUnpairTv = {
+                    viewModel.unpairAndStartPairing()
                 },
                 onCheckUpdateNow = {
                     coroutineScope.launch {

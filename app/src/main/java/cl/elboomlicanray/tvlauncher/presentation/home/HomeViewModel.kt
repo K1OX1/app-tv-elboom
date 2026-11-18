@@ -30,6 +30,7 @@ import java.util.Calendar
 import android.content.Context
 import cl.elboomlicanray.tvlauncher.data.helper.NetworkMonitor
 import cl.elboomlicanray.tvlauncher.data.helper.SmartDnsManager
+import cl.elboomlicanray.tvlauncher.data.security.TvDeviceSecurityManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Date
 import java.util.Locale
@@ -42,7 +43,8 @@ class HomeViewModel @Inject constructor(
     private val appLauncherHelper: AppLauncherHelper,
     private val preferencesHelper: HotelPreferencesHelper,
     private val hotelTvRepository: HotelTvRepository,
-    private val smartDnsManager: SmartDnsManager
+    private val smartDnsManager: SmartDnsManager,
+    private val securityManager: TvDeviceSecurityManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -143,16 +145,16 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        if (!preferencesHelper.hasConfiguredUnitAndToken()) {
+        if (!securityManager.isPaired() && !preferencesHelper.hasConfiguredUnitAndToken()) {
             _uiState.update {
                 it.copy(
-                    isInitialSetupDialogOpen = true,
+                    isPairingScreenVisible = true,
                     connectionStatus = ConnectionStatusInfo(
                         state = TvConnectionState.UNCONFIGURED,
                         unitId = configuredUnit.id,
                         unitName = configuredUnit.name,
-                        message = "Sin Configurar",
-                        detail = "Ingresa el PIN de acceso para conectar con elboom.cl"
+                        message = "Sin Vincular",
+                        detail = "Escanea el código QR para asignar este televisor"
                     )
                 )
             }
@@ -201,17 +203,17 @@ class HomeViewModel @Inject constructor(
     fun refreshHotelAndWeatherData(periodic: Boolean = false) {
         refreshJob?.cancel()
         val unit = preferencesHelper.getConfiguredUnit()
-        val token = preferencesHelper.getUnitToken()
 
-        if (!preferencesHelper.hasConfiguredUnitAndToken()) {
+        if (!securityManager.isPaired() && !preferencesHelper.hasConfiguredUnitAndToken()) {
             _uiState.update {
                 it.copy(
+                    isPairingScreenVisible = true,
                     connectionStatus = ConnectionStatusInfo(
                         state = TvConnectionState.UNCONFIGURED,
                         unitId = unit.id,
                         unitName = unit.name,
-                        message = "Sin Configurar",
-                        detail = "Se requiere configurar el número de cabaña y PIN de acceso."
+                        message = "Sin Vincular",
+                        detail = "Escanea el código QR para asignar este televisor."
                     )
                 )
             }
@@ -256,14 +258,19 @@ class HomeViewModel @Inject constructor(
                 onFailure = { error ->
                     val nowMs = System.currentTimeMillis()
                     if (error is AuthTokenException) {
+                        // Limpieza inmediata de sesión y datos de huéspedes al detectar revocación
+                        securityManager.clearSession()
+                        preferencesHelper.clearCabinConfiguration()
                         _uiState.update {
                             it.copy(
+                                isPairingScreenVisible = true,
+                                guestStay = cl.elboomlicanray.tvlauncher.domain.model.GuestStayInfo(),
                                 connectionStatus = ConnectionStatusInfo(
                                     state = TvConnectionState.AUTH_ERROR,
                                     unitId = unit.id,
                                     unitName = unit.name,
-                                    message = "Token Inválido o Modificado",
-                                    detail = error.message ?: "Se requiere un Token válido. El token fue modificado en administración o es incorrecto.",
+                                    message = "Sesión Revocada o No Autorizada",
+                                    detail = error.message ?: "El televisor no tiene una sesión autorizada.",
                                     httpCode = 401,
                                     lastVerifiedTimestamp = nowMs
                                 )
@@ -687,6 +694,55 @@ class HomeViewModel @Inject constructor(
 
     fun openConnectionStatusDialog() {
         _uiState.update { it.copy(isConnectionStatusDialogOpen = true) }
+    }
+
+    /**
+     * Invocado cuando el emparejamiento por QR es aprobado en el backend por el administrador.
+     * Actualiza la cabaña configurada, oculta la pantalla de vinculación y sincroniza los datos.
+     */
+    fun onPairingSuccess(unitId: Int) {
+        preferencesHelper.setConfiguredUnitId(unitId)
+        val unit = preferencesHelper.getConfiguredUnit()
+        _uiState.update {
+            it.copy(
+                configuredUnit = unit,
+                isPairingScreenVisible = false,
+                isInitialSetupDialogOpen = false,
+                connectionStatus = ConnectionStatusInfo(
+                    state = TvConnectionState.CONNECTED,
+                    unitId = unit.id,
+                    unitName = unit.name,
+                    message = "Conectado a elboom.cl",
+                    detail = "Televisor emparejado por QR · Sesión Segura",
+                    httpCode = 200,
+                    lastVerifiedTimestamp = System.currentTimeMillis()
+                )
+            )
+        }
+        refreshHotelAndWeatherData()
+    }
+
+    /**
+     * Desvincula el televisor, borra la sesión cifrada y muestra inmediatamente la pantalla de emparejamiento con QR.
+     */
+    fun unpairAndStartPairing() {
+        securityManager.clearSession()
+        preferencesHelper.clearCabinConfiguration()
+        val configuredUnit = preferencesHelper.getConfiguredUnit()
+        _uiState.update {
+            it.copy(
+                isPairingScreenVisible = true,
+                isAdminDialogOpen = false,
+                guestStay = cl.elboomlicanray.tvlauncher.domain.model.GuestStayInfo(),
+                connectionStatus = ConnectionStatusInfo(
+                    state = TvConnectionState.UNCONFIGURED,
+                    unitId = configuredUnit.id,
+                    unitName = configuredUnit.name,
+                    message = "Sin Vincular",
+                    detail = "Escanea el código QR para asignar este televisor"
+                )
+            )
+        }
     }
 
     fun closeConnectionStatusDialog() {

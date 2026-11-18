@@ -99,6 +99,7 @@ fun AdminSettingsDialog(
     onToggleForceClean: () -> Unit = {},
     onOpenNetworkSettings: () -> Unit = {},
     onOpenInitialSetup: () -> Unit = {},
+    onUnpairTv: () -> Unit = {},
     isPinLockedOut: () -> Boolean = { false },
     getLockoutRemainingSeconds: () -> Int = { 0 },
     onDismiss: () -> Unit
@@ -512,8 +513,11 @@ fun AdminSettingsDialog(
                                             )
                                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                                 AdminSmallActionButton(
-                                                    label = "🔑 Cambiar PIN de Cabaña",
-                                                    onClick = onOpenInitialSetup
+                                                    label = "📱 Emparejar / Desvincular con QR",
+                                                    onClick = {
+                                                        onUnpairTv()
+                                                        onDismiss()
+                                                    }
                                                 )
                                                 AdminSmallActionButton(
                                                     label = if (isUnitForceClean) "🟢 Alojamiento LIMPIO (Activo)" else "🧹 Marcar LIMPIO / Modo Huésped",

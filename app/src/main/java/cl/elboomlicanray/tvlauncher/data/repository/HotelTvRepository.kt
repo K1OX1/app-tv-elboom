@@ -24,10 +24,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 import javax.inject.Inject
 import javax.inject.Singleton
+import cl.elboomlicanray.tvlauncher.data.security.TvDeviceSecurityManager
 
 @Singleton
 class HotelTvRepository @Inject constructor(
-    private val preferencesHelper: HotelPreferencesHelper
+    private val preferencesHelper: HotelPreferencesHelper,
+    private val securityManager: TvDeviceSecurityManager
 ) {
     companion object {
         private const val TAG = "HotelTvRepository"
@@ -99,11 +101,15 @@ class HotelTvRepository @Inject constructor(
 
     suspend fun fetchHotelStayData(): Result<GuestStayInfo> = withContext(Dispatchers.IO) {
         val unit = preferencesHelper.getConfiguredUnit()
-        val token = preferencesHelper.getUnitToken()
-        if (token.isBlank()) {
-            return@withContext Result.failure(AuthTokenException("No hay Token configurado para ${unit.name}."))
+        val sessionCookie = securityManager.getSessionCookie()
+        val legacyToken = preferencesHelper.getUnitToken()
+
+        if (sessionCookie.isNullOrBlank() && legacyToken.isBlank()) {
+            return@withContext Result.failure(AuthTokenException("Televisor no emparejado. Se requiere vincular el dispositivo."))
         }
-        val endpoint = "${preferencesHelper.getApiBaseUrl()}?unit=${unit.id}&token=$token"
+
+        // Cero tokens en parámetros de URL: la autenticación viaja de forma segura por Cookie HttpOnly o encabezado
+        val endpoint = "${preferencesHelper.getApiBaseUrl()}?unit=${unit.id}"
 
         var connection: HttpURLConnection? = null
         try {
@@ -114,7 +120,12 @@ class HotelTvRepository @Inject constructor(
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Cache-Control", "no-cache")
-                setRequestProperty("Authorization", "Bearer $token")
+                if (!sessionCookie.isNullOrBlank()) {
+                    setRequestProperty("Cookie", "elboom_tv_device=$sessionCookie")
+                }
+                if (legacyToken.isNotBlank()) {
+                    setRequestProperty("Authorization", "Bearer $legacyToken")
+                }
                 setRequestProperty("User-Agent", "ElBoom-SmartTV/${cl.elboomlicanray.tvlauncher.BuildConfig.VERSION_NAME}")
                 useCaches = false
             }
@@ -129,7 +140,10 @@ class HotelTvRepository @Inject constructor(
                     return@withContext Result.success(stayInfo)
                 }
             } else if (statusCode == 401 || statusCode == 403) {
-                return@withContext Result.failure(AuthTokenException("Se requiere un Token válido. El token fue modificado en administración o es incorrecto (HTTP $statusCode)."))
+                // Revocación o expiración: limpiar inmediatamente la sesión local y la unidad asignada
+                securityManager.clearSession()
+                preferencesHelper.clearCabinConfiguration()
+                return@withContext Result.failure(AuthTokenException("Sesión no autorizada o revocada por el administrador (HTTP $statusCode)."))
             }
             Result.failure(Exception("HTTP $statusCode al consultar Hotel TV"))
         } catch (e: Exception) {
@@ -151,14 +165,20 @@ class HotelTvRepository @Inject constructor(
         val url = URL(preferencesHelper.getApiBaseUrl().trimEnd('/') + "/cleaning/ready")
         val connection = url.openConnection() as HttpURLConnection
         try {
+            val sessionCookie = securityManager.getSessionCookie()
             val token = preferencesHelper.getUnitToken()
             connection.requestMethod = "POST"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 6000
             connection.readTimeout = 6000
             connection.doOutput = true
-            connection.setRequestProperty("Authorization", "Bearer $token")
-            connection.setRequestProperty("x-tv-token", token)
+            if (!sessionCookie.isNullOrBlank()) {
+                connection.setRequestProperty("Cookie", "elboom_tv_device=$sessionCookie")
+            }
+            if (token.isNotBlank()) {
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                connection.setRequestProperty("x-tv-token", token)
+            }
             connection.setRequestProperty("Content-Type", "application/json")
             connection.outputStream.bufferedWriter().use {
                 it.write(JSONObject().put("unitId", unitId).put("taskToken", taskToken).toString())
@@ -1016,6 +1036,7 @@ class HotelTvRepository @Inject constructor(
         googleMapsUrl: String
     ): Result<String> = withContext(Dispatchers.IO) {
         val unit = preferencesHelper.getConfiguredUnit()
+        val sessionCookie = securityManager.getSessionCookie()
         val token = preferencesHelper.getUnitToken()
         val baseUrl = preferencesHelper.getApiBaseUrl()
         // El endpoint base suele ser https://elboom.cl/api/hotel-tv
@@ -1035,6 +1056,9 @@ class HotelTvRepository @Inject constructor(
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 setRequestProperty("Accept", "application/json")
+                if (!sessionCookie.isNullOrBlank()) {
+                    setRequestProperty("Cookie", "elboom_tv_device=$sessionCookie")
+                }
                 if (token.isNotBlank()) {
                     setRequestProperty("Authorization", "Bearer $token")
                     setRequestProperty("x-tv-token", token)

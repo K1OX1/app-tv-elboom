@@ -37,6 +37,7 @@ data class HomeUiState(
 
     // Conexión y Autenticación Continua con elboom.cl
     val connectionStatus: ConnectionStatusInfo = ConnectionStatusInfo(),
+    val isPairingScreenVisible: Boolean = false,
     val isInitialSetupDialogOpen: Boolean = false,
     val isConnectionStatusDialogOpen: Boolean = false,
 
