@@ -225,6 +225,7 @@ class HomeViewModel @Inject constructor(
             val stayResult = hotelTvRepository.fetchHotelStayData()
             stayResult.fold(
                 onSuccess = { stayInfo ->
+                    val activeUnit = preferencesHelper.getConfiguredUnit()
                     // Sanitización quirúrgica de privacidad de huéspedes
                     val sanitizedStay = if (!stayInfo.isOccupied) {
                         stayInfo.copy(
@@ -235,20 +236,21 @@ class HomeViewModel @Inject constructor(
                             guestEmail = "",
                             guestOriginCity = "Chile",
                             specialRequests = "",
-                            vehiclePlate = "Estacionamiento techado Cabaña N°${unit.id}"
+                            vehiclePlate = "Estacionamiento techado Cabaña N°${activeUnit.id}"
                         )
                     } else {
                         stayInfo
                     }
                     _uiState.update {
                         it.copy(
+                            configuredUnit = activeUnit,
                             guestStay = sanitizedStay,
                             connectionStatus = ConnectionStatusInfo(
                                 state = TvConnectionState.CONNECTED,
-                                unitId = unit.id,
-                                unitName = unit.name,
+                                unitId = activeUnit.id,
+                                unitName = activeUnit.name,
                                 message = "Conectado a elboom.cl",
-                                detail = "${unit.name} · Token Válido · Sincronización en vivo",
+                                detail = "${activeUnit.name} · Token Válido · Sincronización en vivo",
                                 httpCode = 200,
                                 lastVerifiedTimestamp = System.currentTimeMillis()
                             )

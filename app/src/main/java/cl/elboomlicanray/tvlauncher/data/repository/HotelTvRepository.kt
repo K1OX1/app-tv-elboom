@@ -132,11 +132,35 @@ class HotelTvRepository @Inject constructor(
 
             val statusCode = connection.responseCode
             if (statusCode == 200) {
+                // Capturar renovación de cookie de sesión si el servidor actualizó la cabaña
+                val setCookieHeaders = connection.headerFields["Set-Cookie"]
+                    ?: connection.headerFields["set-cookie"]
+                    ?: emptyList()
+                for (header in setCookieHeaders) {
+                    if (header.contains("elboom_tv_device=")) {
+                        val raw = header.substringAfter("elboom_tv_device=").substringBefore(";")
+                        if (raw.isNotBlank()) {
+                            securityManager.saveSessionCookie(raw.trim())
+                            break
+                        }
+                    }
+                }
+
                 val responseText = connection.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(responseText)
                 val isSuccess = json.optBoolean("success", true) || json.has("screen") || json.has("unit") || json.has("guest")
                 if (isSuccess && !json.has("error")) {
-                    val stayInfo = parseHotelTvJson(json, unit)
+                    val parsedUnitId = json.optJSONObject("unit")?.optInt("id") ?: 0
+                    val activeUnit = if (parsedUnitId > 0) {
+                        if (parsedUnitId != preferencesHelper.getConfiguredUnitId()) {
+                            preferencesHelper.setConfiguredUnitId(parsedUnitId)
+                            Log.i(TAG, "Cabaña reasignada dinámicamente desde el panel a ID: $parsedUnitId")
+                        }
+                        preferencesHelper.getConfiguredUnit()
+                    } else {
+                        unit
+                    }
+                    val stayInfo = parseHotelTvJson(json, activeUnit)
                     return@withContext Result.success(stayInfo)
                 }
             } else if (statusCode == 401 || statusCode == 403) {
