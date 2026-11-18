@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -70,7 +71,10 @@ fun TvPairingScreen(
     LaunchedEffect(state) {
         if (state is TvPairingUiState.Approved) {
             val approved = state as TvPairingUiState.Approved
-            delay(1200L) // Breve confirmación visual antes de entrar
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {}
+            delay(1500L) // Breve confirmación visual antes de entrar
             onPairingSuccess(approved.unitId)
         } else if (state is TvPairingUiState.WaitingForApproval || state is TvPairingUiState.Expired || state is TvPairingUiState.NetworkError) {
             try {
@@ -109,7 +113,12 @@ fun TvPairingScreen(
             }
 
             is TvPairingUiState.Approved -> {
-                ApprovedView(uiState.unitName)
+                ApprovedView(
+                    unitName = uiState.unitName,
+                    focusRequester = focusRequester,
+                    onContinue = { onPairingSuccess(uiState.unitId) },
+                    onRePair = { viewModel.resetAndStartPairing() }
+                )
             }
 
             is TvPairingUiState.Expired -> {
@@ -306,7 +315,12 @@ private fun PairingActiveView(
 }
 
 @Composable
-private fun ApprovedView(unitName: String) {
+private fun ApprovedView(
+    unitName: String,
+    focusRequester: FocusRequester,
+    onContinue: () -> Unit,
+    onRePair: () -> Unit
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -353,6 +367,26 @@ private fun ApprovedView(unitName: String) {
             fontSize = 14.sp,
             color = TvTokens.TextMuted
         )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TvButton(
+                text = "Ingresar ahora",
+                icon = { Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp)) },
+                onClick = onContinue,
+                modifier = Modifier.focusRequester(focusRequester)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            TvButton(
+                text = "Generar nuevo código",
+                icon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp)) },
+                onClick = onRePair
+            )
+        }
     }
 }
 

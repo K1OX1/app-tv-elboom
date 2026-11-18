@@ -210,6 +210,11 @@ fun HomeScreen(
 
         if (uiState.isPairingScreenVisible) {
             val pairingViewModel: cl.elboomlicanray.tvlauncher.presentation.pairing.TvPairingViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            androidx.compose.runtime.LaunchedEffect(uiState.isPairingScreenVisible) {
+                // Al entrar a la pantalla de emparejamiento (por revocación, desvinculación o primer inicio),
+                // forzamos la renovación limpia del código para evitar quedar en estado 'Approved' anterior
+                pairingViewModel.resetAndStartPairing()
+            }
             cl.elboomlicanray.tvlauncher.presentation.pairing.TvPairingScreen(
                 viewModel = pairingViewModel,
                 onPairingSuccess = { unitId ->

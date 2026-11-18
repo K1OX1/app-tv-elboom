@@ -116,6 +116,12 @@ class TvPairingViewModel @Inject constructor(
         startPairing()
     }
 
+    fun resetAndStartPairing() {
+        stopJobs()
+        currentCode = null
+        startPairing()
+    }
+
     fun retry() {
         startPairing()
     }
